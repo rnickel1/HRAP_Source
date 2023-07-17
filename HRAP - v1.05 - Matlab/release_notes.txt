@@ -1,0 +1,45 @@
+Known Issues v1.05:
+
+1. Must run as an administrator to save to default directories
+2. If app is not installed in the default install location, the example motor config will not run
+
+Changelog:
+
+v1.00
+____________________________________________________________________________________________________
+1. Initial release
+
+v1.01
+____________________________________________________________________________________________________
+1. fixed units in plotting
+
+2. fixed issue where vent diameter units aren't enabled when defining a vent
+
+3. fixed rse export units, as cg was being exported in centimeters but the rse file format requires millimeters
+
+4. added run log for debugging
+
+5. updated HRAP documentation
+
+v1.02
+____________________________________________________________________________________________________
+1. Stopped running new sim from overwriting selected plot settings
+2. Fixed issues with loading and saving configurations
+
+v1.03
+____________________________________________________________________________________________________
+1. fixed bug in saving and loading
+2. simplified initial conditions tab components
+
+v1.04
+____________________________________________________________________________________________________
+1. updated documentation and fixed a few minor issues with the UI
+
+v1.05
+____________________________________________________________________________________________________
+1. fixed nozzle definition where defining nozzle by exit diameter returned an error
+2. fixed regression coefficient definitions so that they are read in by the simulation
+3. fixed thrust model to accurately reflect changes in C* efficiency
+4. fixed tank condition definition where configurations weren't saved if defining by pressure
+5. added final fuel grain port diameter at burn-out to results summary
+6. added file explorer for output options

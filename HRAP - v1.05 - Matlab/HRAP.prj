@@ -1,0 +1,209 @@
+<deployment-project plugin="plugin.ezdeploy" plugin-version="1.0">
+  <configuration build-checksum="756343908" file="C:\Users\drewn\Desktop\Programs\HRAP - v1.05\HRAP.prj" location="C:\Users\drewn\Desktop\Programs\HRAP - v1.05" name="HRAP" preferred-package-location="C:\Users\drewn\Desktop\Programs\HRAP - v1.05\HRAP\for_redistribution" preferred-package-type="package.type.exe" target="target.ezdeploy.standalone" target-name="Application Compiler">
+    <param.appname>HRAP</param.appname>
+    <param.icon>${PROJECT_ROOT}\HRAP_resources\icon.ico</param.icon>
+    <param.icons>
+      <file>${PROJECT_ROOT}\HRAP_resources\icon_48.png</file>
+      <file>${PROJECT_ROOT}\HRAP_resources\icon_32.png</file>
+      <file>${PROJECT_ROOT}\HRAP_resources\icon_24.png</file>
+      <file>${PROJECT_ROOT}\HRAP_resources\icon_16.png</file>
+    </param.icons>
+    <param.version>1.05</param.version>
+    <param.authnamewatermark>Robert A. Nickel</param.authnamewatermark>
+    <param.email>ranickel.ae@gmail.com</param.email>
+    <param.company />
+    <param.summary>Tool for simulating performance of a self-pressurizing hybrid rocket motor.</param.summary>
+    <param.description>The Hybrid Rocket Analysis Program (HRAP) was developed by Robert Nickel for use by the University of Tennessee Rocket Engineering Team. HRAP is a versatile tool utilizing a thermodynamic equilibrium model for simulation of self-pressurizing hybrid rocket motors, especially those powered with Nitrous Oxide stored as a saturated liquid-vapor mixture.</param.description>
+    <param.screenshot>${PROJECT_ROOT}\sources\hrap_splash.png</param.screenshot>
+    <param.guid />
+    <param.installpath.string>\HRAP\</param.installpath.string>
+    <param.installpath.combo>option.installpath.programfiles</param.installpath.combo>
+    <param.logo>${PROJECT_ROOT}\sources\hrap_splash.png</param.logo>
+    <param.install.notes>Known Issues v1.05:
+
+1. Must run as an administrator to save to default directories
+2. If app is not installed in the default install location, the example motor config will not run
+
+Changelog:
+
+v1.00
+____________________________________________________________________________________________________
+1. Initial release
+
+v1.01
+____________________________________________________________________________________________________
+1. fixed units in plotting
+
+2. fixed issue where vent diameter units aren't enabled when defining a vent
+
+3. fixed rse export units, as cg was being exported in centimeters but the rse file format requires millimeters
+
+4. added run log for debugging
+
+5. updated HRAP documentation
+
+v1.02
+____________________________________________________________________________________________________
+1. Stopped running new sim from overwriting selected plot settings
+2. Fixed issues with loading and saving configurations
+
+v1.03
+____________________________________________________________________________________________________
+1. fixed bug in saving and loading
+2. simplified initial conditions tab components
+
+v1.04
+____________________________________________________________________________________________________
+1. updated documentation and fixed a few minor issues with the UI
+
+v1.05
+____________________________________________________________________________________________________
+1. fixed nozzle definition where defining nozzle by exit diameter returned an error
+2. fixed regression coefficient definitions so that they are read in by the simulation
+3. fixed thrust model to accurately reflect changes in C* efficiency
+4. fixed tank condition definition where configurations weren't saved if defining by pressure
+5. added final fuel grain port diameter at burn-out to results summary
+6. added file explorer for output options</param.install.notes>
+    <param.target.install.notes />
+    <param.intermediate>${PROJECT_ROOT}\HRAP\for_testing</param.intermediate>
+    <param.files.only>${PROJECT_ROOT}\HRAP\for_redistribution_files_only</param.files.only>
+    <param.output>${PROJECT_ROOT}\HRAP\for_redistribution</param.output>
+    <param.logdir>${PROJECT_ROOT}\HRAP</param.logdir>
+    <param.enable.clean.build>false</param.enable.clean.build>
+    <param.user.defined.mcr.options />
+    <param.target.type>subtarget.standalone</param.target.type>
+    <param.support.packages />
+    <param.web.mcr>true</param.web.mcr>
+    <param.package.mcr>false</param.package.mcr>
+    <param.no.mcr>false</param.no.mcr>
+    <param.web.mcr.name>hrap_installer</param.web.mcr.name>
+    <param.package.mcr.name>MyAppInstaller_mcr</param.package.mcr.name>
+    <param.no.mcr.name>MyAppInstaller_app</param.no.mcr.name>
+    <param.windows.command.prompt>true</param.windows.command.prompt>
+    <param.create.log>true</param.create.log>
+    <param.log.file>hrap_log.txt</param.log.file>
+    <param.native.matlab>false</param.native.matlab>
+    <param.checkbox>false</param.checkbox>
+    <param.example />
+    <param.help.text>Syntax 
+	  -? 
+	 
+ Input Arguments 
+	 -?  print help on how to use the application 
+	 input arguments</param.help.text>
+    <unset>
+      <param.company />
+      <param.guid />
+      <param.installpath.string />
+      <param.installpath.combo />
+      <param.target.install.notes />
+      <param.intermediate />
+      <param.files.only />
+      <param.output />
+      <param.logdir />
+      <param.enable.clean.build />
+      <param.user.defined.mcr.options />
+      <param.target.type />
+      <param.support.packages />
+      <param.web.mcr />
+      <param.package.mcr />
+      <param.no.mcr />
+      <param.package.mcr.name />
+      <param.no.mcr.name />
+      <param.windows.command.prompt />
+      <param.native.matlab />
+      <param.checkbox />
+      <param.example />
+    </unset>
+    <fileset.main>
+      <file>${PROJECT_ROOT}\HRAP_2023_07_14.mlapp</file>
+    </fileset.main>
+    <fileset.resources>
+      <file>${PROJECT_ROOT}\core\sim_iteration.m</file>
+      <file>${PROJECT_ROOT}\core\sim_loop.m</file>
+      <file>${PROJECT_ROOT}\sources\Theory and Application of the Hybrid Rocket Analysis Program (HRAP).pdf</file>
+      <file>${PROJECT_ROOT}\util\chamber.m</file>
+      <file>${PROJECT_ROOT}\util\comb.m</file>
+      <file>${PROJECT_ROOT}\util\const_OF.m</file>
+      <file>${PROJECT_ROOT}\util\impulse.m</file>
+      <file>${PROJECT_ROOT}\util\interp1x.m</file>
+      <file>${PROJECT_ROOT}\util\interp2x.m</file>
+      <file>${PROJECT_ROOT}\util\mass.m</file>
+      <file>${PROJECT_ROOT}\util\NOX.m</file>
+      <file>${PROJECT_ROOT}\util\nozzle.m</file>
+      <file>${PROJECT_ROOT}\util\shift_OF.m</file>
+      <file>${PROJECT_ROOT}\util\tank.m</file>
+    </fileset.resources>
+    <fileset.package>
+      <file>${PROJECT_ROOT}\motor_configs</file>
+      <file>${PROJECT_ROOT}\output</file>
+      <file>${PROJECT_ROOT}\propellant_configs</file>
+    </fileset.package>
+    <fileset.depfun>
+      <file>${PROJECT_ROOT}\sources\Launch.jpg</file>
+      <file>${PROJECT_ROOT}\sources\test fire.jpg</file>
+    </fileset.depfun>
+    <build-deliverables>
+      <file location="${PROJECT_ROOT}\HRAP\for_testing" name="readme.txt" optional="true">C:\Users\drewn\Desktop\Programs\HRAP - v1.05\HRAP\for_testing\readme.txt</file>
+      <file location="${PROJECT_ROOT}\HRAP\for_testing" name="splash.png" optional="false">C:\Users\drewn\Desktop\Programs\HRAP - v1.05\HRAP\for_testing\splash.png</file>
+      <file location="${PROJECT_ROOT}\HRAP\for_testing" name="HRAP.exe" optional="false">C:\Users\drewn\Desktop\Programs\HRAP - v1.05\HRAP\for_testing\HRAP.exe</file>
+    </build-deliverables>
+    <workflow />
+    <matlab>
+      <root>C:\Program Files\MATLAB\R2020a</root>
+      <toolboxes>
+        <toolbox name="matlabcoder" />
+        <toolbox name="embeddedcoder" />
+        <toolbox name="gpucoder" />
+        <toolbox name="fixedpoint" />
+        <toolbox name="matlabhdlcoder" />
+        <toolbox name="neuralnetwork" />
+      </toolboxes>
+      <toolbox>
+        <matlabcoder>
+          <enabled>true</enabled>
+        </matlabcoder>
+      </toolbox>
+      <toolbox>
+        <embeddedcoder>
+          <enabled>true</enabled>
+        </embeddedcoder>
+      </toolbox>
+      <toolbox>
+        <gpucoder>
+          <enabled>true</enabled>
+        </gpucoder>
+      </toolbox>
+      <toolbox>
+        <fixedpoint>
+          <enabled>true</enabled>
+        </fixedpoint>
+      </toolbox>
+      <toolbox>
+        <matlabhdlcoder>
+          <enabled>true</enabled>
+        </matlabhdlcoder>
+      </toolbox>
+      <toolbox>
+        <neuralnetwork>
+          <enabled>true</enabled>
+        </neuralnetwork>
+      </toolbox>
+    </matlab>
+    <platform>
+      <unix>false</unix>
+      <mac>false</mac>
+      <windows>true</windows>
+      <win2k>false</win2k>
+      <winxp>false</winxp>
+      <vista>false</vista>
+      <linux>false</linux>
+      <solaris>false</solaris>
+      <osver>10.0</osver>
+      <os32>false</os32>
+      <os64>true</os64>
+      <arch>win64</arch>
+      <matlab>true</matlab>
+    </platform>
+  </configuration>
+</deployment-project>
