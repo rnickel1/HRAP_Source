@@ -9,13 +9,14 @@ The Hybrid Rocket Analysis Program (HRAP) was developed by Robert Nickel for use
 
 ## Call for volunteers!
 
-In its current state this program can model an adiabatic oxidizer tank and combustion chamber and an isentropic nozzle. However, this could be significantly improved by some helpful volunteers in the following categories: 
+In its current state this program can model an adiabatic oxidizer tank and combustion chamber and an isentropic nozzle, along with semi-empirical correction factors such as combustion/nozzle efficiency. HRAP also allows the exporting of a .RSE engine file for use in OpenRocket or RockSim, which allows not only the mass of the motor to be captured but also the approximate center of mass of the motor.
+
+HRAP could be significantly improved by some helpful volunteers in the following categories: 
 - Non-equilibrium tank model
 - Two-phase injector model
 - Compressible real gas model for vapor discharge
-- Improved nozzle model
 - Non-cylindrical ports
 - Option to export a .eng engine file for use in OpenRocket
-- Use of other self-pressurizing oxidizers such as Nytrox
+- Use of other self-pressurizing oxidizers such as Nytrox or supercharged nitrous
 - More config files describing burn characteristics of different propellants
-Future iterations will account for subsonic flow and flow separation to better model thrust, add an option to export a .eng or .rse engine file for use in OpenRocket or RockSim, and will allow the use of other self-pressurizing oxidizers such as Nytrox. Development is also needed for more configuration files describing burn characteristics of different propellants.
+- Potentially a shift from look-up tables of propellant data to integrating NASA's CEA tool into the combustion modeling
