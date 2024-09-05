@@ -21,6 +21,17 @@ dt = s.dt;
 %Find oxidizer mass flow rate
 
     dP = x.P_tnk - x.P_cmbr;
+    
+    Mcc = sqrt(x.ox_props.Z*1.31*188.91*x.T_tnk*(x.P_cmbr/x.P_tnk)^(0.31/1.31));
+    Matm = sqrt(x.ox_props.Z*1.31*188.91*x.T_tnk*(s.Pa/x.P_tnk)^(0.31/1.31));
+    
+    if Mcc >=1
+        Mcc = 1;
+    end
+    
+    if Matm >=1
+        Matm = 1;
+    end
 
     if dP < 0
         dP = 0;
@@ -30,23 +41,23 @@ dt = s.dt;
         if s.vnt_S == 0
             x.mdot_v = 0;
             if x.mLiq_new == 0
-                x.mdot_o = s.inj_CdA*s.inj_N*sqrt(2*x.ox_props.rho_v*dP);
+                x.mdot_o = (s.inj_CdA*s.inj_N*x.P_tnk/sqrt(x.T_tnk))*sqrt(1.31/(x.ox_props.Z*188.91))*Mcc*(1+(0.31)/2*Mcc^2)^(-2.31/0.62);
             else
                 x.mdot_o = s.inj_CdA*s.inj_N*sqrt(2*x.ox_props.rho_l*dP);
             end
             mD = (x.mdot_o+x.mdot_v)*dt;
         elseif s.vnt_S == 1
-            x.mdot_v     = s.vnt_CdA*sqrt(2*x.ox_props.rho_v*dP);
+            x.mdot_v     = (s.vnt_CdA*x.P_tnk/sqrt(x.T_tnk))*sqrt(1.31/(x.ox_props.Z*188.91))*Matm*(1+(0.31)/2*Matm^2)^(-2.31/0.62);
             if x.mLiq_new == 0
-                x.mdot_o = s.inj_CdA*s.inj_N*sqrt(2*x.ox_props.rho_v*dP);
+                x.mdot_o = (s.inj_CdA*s.inj_N*x.P_tnk/sqrt(x.T_tnk))*sqrt(1.31/(x.ox_props.Z*188.91))*Mcc*(1+(0.31)/2*Mcc^2)^(-2.31/0.62);
             else
                 x.mdot_o = s.inj_CdA*s.inj_N*sqrt(2*x.ox_props.rho_l*dP);
             end
             mD = (x.mdot_o+x.mdot_v)*dt;
         elseif s.vnt_S == 2
-            x.mdot_v     = s.vnt_CdA*sqrt(2*x.ox_props.rho_v*dP);
+            x.mdot_v     = (s.vnt_CdA*x.P_tnk/sqrt(x.T_tnk))*sqrt(1.31/(x.ox_props.Z*188.91))*Matm*(1+(0.31)/2*Matm^2)^(-2.31/0.62);
             if x.mLiq_new == 0
-                x.mdot_o = s.inj_CdA*s.inj_N*sqrt(2*x.ox_props.rho_v*dP) + x.mdot_v;
+                x.mdot_o = (s.inj_CdA*s.inj_N*x.P_tnk/sqrt(x.T_tnk))*sqrt(1.31/(x.ox_props.Z*188.91))*Mcc*(1+(0.31)/2*Mcc^2)^(-2.31/0.62);
             else
                 x.mdot_o = s.inj_CdA*s.inj_N*sqrt(2*x.ox_props.rho_l*dP) + x.mdot_v;
             end
