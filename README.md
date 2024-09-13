@@ -14,9 +14,8 @@ In its current state this program can model an adiabatic oxidizer tank and combu
 HRAP could be significantly improved by some helpful volunteers in the following categories: 
 - Non-equilibrium tank model
 - Two-phase injector model
-- Compressible real gas model for vapor discharge
 - Non-cylindrical ports
 - Option to export a .eng engine file for use in OpenRocket
-- Use of other self-pressurizing oxidizers such as Nytrox or supercharged nitrous
 - More config files describing burn characteristics of different propellants
 - Potentially a shift from look-up tables of propellant data to integrating NASA's CEA tool into the combustion modeling
+- integrating CoolProp for thermodynamic modeling
