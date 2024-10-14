@@ -1,3 +1,5 @@
+from core import store_x, make_part
+
 from jax.lax import cond
 
 def d_chamber(s, x, dx, smap, xmap):
@@ -13,15 +15,15 @@ def d_chamber(s, x, dx, smap, xmap):
     dV       = s['cmbr_V'] - dx['grn_V'] # Gas volume in chamber derivative
 
     # Chamber stored mass derivative
-    d_m_g = cond(m_g <= 0.0, 0.0, grn_mdot + inj_mdot - noz_mdot)
+    mdot_g = cond(m_g <= 0.0, 0.0, grn_mdot + inj_mdot - noz_mdot)
 
     # Chamber pressure derivative
-    d_P = cond(Pt <= s['Pa'], 0.0, Pt*(d_m_g/m_g - dV/V))
+    Pdot = cond(Pt <= s['Pa'], 0.0, Pt*(mdot_g/m_g - dV/V))
 
-    # Store everything
-    dx = store_x(dx, xmap, cmbr_m_g=d_m_g, cmbr_P=d_P)
+    # Store derivatives
+    dx = store_x(x, xmap, cmbr_mdot_g=mdot_g, cmbr_P=Pdot)
 
-    return x, dx
+    return x
 
 def u_chamber(s, x, dx, smap, xmap):
     # Limit stored and gas and pressure to reasonable values
@@ -34,11 +36,13 @@ def u_chamber(s, x, dx, smap, xmap):
 
 def make_chamber(**kwargs):
     return make_part(
-        # Default static and initial dynamic variables
+        # Default static parameters
         s = {
+            'V': 0.0,
         },
+        
+        # Default initial variables
         x = {
-            'V':   0.0,
             'P':   101e3,
             'm_g': 1E-3,
         },
@@ -46,13 +50,15 @@ def make_chamber(**kwargs):
         # Required and integrated variables
         req_s = [],
         req_x = [],
-        dx    = ['P', 'm_g'],
+        
+        # State name to derivative name for integrated variables
+        dx = { 'P': 'Pdot', 'm_g': 'mdot_g' } ,
 
         # Designation and associated functions
-        type = 'cmbr',
+        typename = 'cmbr',
         fderiv  = d_chamber,
         fupdate = u_chamber,
 
-        # The user-specified static and initial dynamic variables
+        # The user-specified s or x entries
         **kwargs,
     )

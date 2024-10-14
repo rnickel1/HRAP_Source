@@ -38,21 +38,22 @@ def d_cd_nozzle(s, x, dx, smap, xmap):
     # Thrust
     thrust = s['noz_eff']*Cf*A_thrt*Pt*s['noz_Cd']
 
-    # Store everything
+    # Store state
     x = store_x(x, xmap, noz_mdot=mdot, noz_Me=Me, noz_Pe=Pe, noz_thrust=thrust)
 
     return x, dx
 
 def make_cd_nozzle(**kwargs):
     return make_part(
-        # Default static and initial dynamic variables
+        # Default static parameters
         s = {
             'Cd':    1.0,
             'eff':   1.0,
-            'cstar': 1.0,
             'thrt':  None,
             'ER':    None,
         },
+        
+        # Default initial variables
         x = {
             'mdot':   0.0,
             'Me':     0.0,
@@ -60,16 +61,18 @@ def make_cd_nozzle(**kwargs):
             'thrust': 0.0,
         },
         
-        # Required and integrated variables
+        # Required parameters and variables
         req_s = ['thrt', 'ER'],
         req_x = [],
-        dx    = [],
+        
+        # State name to derivative name for integrated variables
+        dx = { },
 
         # Designation and associated functions
-        type = 'noz',
-        fderiv  = d_cd_nozzle,
-        fupdate = None,
+        typename = 'noz',
+        fderiv   = d_cd_nozzle,
+        fupdate  = None,
 
-        # The user-specified static and initial dynamic variables
+        # The user-specified s or x entries
         **kwargs,
     )

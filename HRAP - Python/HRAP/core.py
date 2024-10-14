@@ -1,10 +1,22 @@
-def make_item(default, **kwargs):
-    item = { **default }
+def make_part(s, x, req_s, req_x, dx, typename, fderiv, fupdate, **kwargs):
+    item = {
+        's': { **s },
+        'x': { **x },
+        'dx': dx,
+        'type': typename,
+        'fderiv': fderiv,
+        'fupdate': fupdate,
+    }
     for key, val in kwargs.items():
         item[key] = val
 
     return item
 
+def store_x(x, xmap, **kwargs):
+    for key, val in kwargs.items():
+        x = x.at[xmap[key]].set(val)
+    
+    return x
 
 def step_rk(
     args,

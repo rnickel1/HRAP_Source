@@ -3,10 +3,14 @@ def d_grain(s, x, dx):
 
 def u_grain(s, x, dx):
 
-def make_grain(fshape, **kwargs):
+def make_circle_shape():
+    
+
+def make_const_of_grain(shape, **kwargs):
     return make_part(
         # Default static and initial dynamic variables
         s = {
+            'OD': 0,
         },
         x = {
             'V':   0.0,
