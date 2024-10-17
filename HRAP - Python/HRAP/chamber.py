@@ -2,7 +2,7 @@ from core import store_x, make_part
 
 from jax.lax import cond
 
-def d_chamber(s, x, dx, smap, xmap):
+def d_chamber(s, x, smap, xmap):
     # if s['cmbr_V'] == 0:
     #     V = np.pi/4 * x['grn_ID']**2 * s['grn_L']
     # else
@@ -25,7 +25,7 @@ def d_chamber(s, x, dx, smap, xmap):
 
     return x
 
-def u_chamber(s, x, dx, smap, xmap):
+def u_chamber(s, x, xmap):
     # Limit stored and gas and pressure to reasonable values
     x = store_x(x, xmap,
         cmbr_m_g = jnp.maximum(x[xmap['cmbr_m_g']],     0.0)
