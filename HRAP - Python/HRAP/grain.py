@@ -36,7 +36,7 @@ def u_grain(s, x, xmap):
 
 def i_circle(s, x, xmap):
     
-    return s, x, xmap
+    return s, x
 
 def make_circle_shape():
     return make_part(
