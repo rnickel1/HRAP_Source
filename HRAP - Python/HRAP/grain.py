@@ -1,3 +1,10 @@
+from core import store_x, make_part
+
+import jax.numpy as jnp
+from jax.lax import cond
+
+from functools import partial
+
 def d_grain_constOF(s, x, xmap, fshape):
     mdot_ox = x[xmap['']]
     d = x[xmap['grn_d']]
@@ -6,7 +13,7 @@ def d_grain_constOF(s, x, xmap, fshape):
     
     
     # Current arc length of exposed grain on the cross section
-    arc = fshape(d)
+    arc = fshape(d, s, x, xmap)
     
     # Rate of volume consumption (positive)
     Vdot = rho * mdot
@@ -38,7 +45,10 @@ def i_circle(s, x, xmap):
     
     return s, x
 
-def make_circle_shape():
+def make_circle_shape(**kwargs):
+    def fcircle(d, s, x, xmap):
+        return np.pi * (s['grn_shape_ID'] + 2*d)
+    
     return make_part(
         # Default static and initial dynamic variables
         s = {
@@ -56,12 +66,11 @@ def make_circle_shape():
         # Required and integrated variables
         req_s = ['OD', 'L', 'OF'],
         req_x = ['A'],
-        dx    = ['A': 'Adot', 'd': 'ddot'],
+        dx    = {'A': 'Adot', 'd': 'ddot'},
 
-        # Designation and associated functions
-        type = 'grn_shape',
-        fderiv  = partial(d_grain_constOF, fshape=fshape),
-        fupdate = u_chamber,
+        typename = 'grn_shape',
+
+        fshape = fcircle,
 
         # The user-specified static and initial dynamic variables
         **kwargs,
@@ -85,12 +94,12 @@ def make_constOF_grain(shape, **kwargs):
         # Required and integrated variables
         req_s = ['OD', 'L', 'OF'],
         req_x = ['A'],
-        dx    = ['A': 'Adot', 'd': 'ddot'],
+        dx    = {'A': 'Adot', 'd': 'ddot'},
 
         # Designation and associated functions
-        type = 'cmbr',
-        fderiv  = partial(d_grain_constOF, fshape=fshape),
-        fupdate = u_chamber,
+        typename = 'cmbr',
+        fderiv  = partial(d_grain_constOF, fshape=shape['fshape']),
+        fupdate = u_grain,
 
         # The user-specified static and initial dynamic variables
         **kwargs,

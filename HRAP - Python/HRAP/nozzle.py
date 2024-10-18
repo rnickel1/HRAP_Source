@@ -1,3 +1,9 @@
+from core import store_x, make_part
+
+import jax.numpy as jnp
+from jax.lax import cond
+
+from functools import partial
 
 # Solve for exit mach given specific heat ratio and exit ratio
 def M_solve(k, ER):

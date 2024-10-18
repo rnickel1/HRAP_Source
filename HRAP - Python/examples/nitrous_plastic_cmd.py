@@ -1,10 +1,13 @@
+import sys
+sys.path.insert(1, '../HRAP/')
+
 import core
 from tank    import *
 from grain   import *
 from chamber import *
 from nozzle  import *
-from units   import *
 from sat_nos import *
+from units   import _in
 
 """
 numpy
@@ -21,7 +24,10 @@ tank = make_sat_tank(
     m_ox=5.0, # TODO: init limit
 )
 
-grn = make_grain(
+shape = make_circle_shape(
+)
+grn = make_constOF_grain(
+    shape,
 )
 
 cmbr = make_chamber(
@@ -34,7 +40,7 @@ noz = make_cd_nozzle(
 
 s, x, method = core.make_engine(
     tank, grn, cmbr, noz,
-    'cstar': 1,
+    cstar=1,
 )
 
 
@@ -47,12 +53,16 @@ fire_engine = core.make_integrator(
 )
 
 # Integrate the engine state
-t, x = fire_engine(s, x, dt=1E-2, T=10.0)
+t, x, xstack = fire_engine(s, x, dt=1E-2, T=10.0)
 
 # Unpack the dynamic engine state
-tank, grn, cmbr, noz = unpack_engine(s, x)
+tank, grn, cmbr, noz = unpack_engine(s, x, xstack)
 
 
+
+# Visualization
+fig, axs = plt.subplots(nrows=2, ncols=2, figsize=(12,7))
+axs = np.array(axs).ravel()
 
 # Plot thrust
 axs[0].plot(t, noz['thrust'])
@@ -62,4 +72,8 @@ axs[0].plot(t, tank['mdot_ox'])
 
 # Plot nozzle flow rate
 
+# Open plot
+fig.show()
+
 # Save plot
+fig.savefig(str(f'./results/nitrous_plastic_plots')+'.pdf', format='pdf', bbox_inches='tight', pad_inches=0.1)

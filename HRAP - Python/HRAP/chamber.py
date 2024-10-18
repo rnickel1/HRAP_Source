@@ -1,5 +1,6 @@
 from core import store_x, make_part
 
+import jax.numpy as jnp
 from jax.lax import cond
 
 def d_chamber(s, x, smap, xmap):
@@ -28,8 +29,8 @@ def d_chamber(s, x, smap, xmap):
 def u_chamber(s, x, xmap):
     # Limit stored and gas and pressure to reasonable values
     x = store_x(x, xmap,
-        cmbr_m_g = jnp.maximum(x[xmap['cmbr_m_g']],     0.0)
-        cmbr_P   = jnp.maximum(x[xmap['cmbr_P']],   s['Pa'])
+        cmbr_m_g = jnp.maximum(x[xmap['cmbr_m_g']],     0.0),
+        cmbr_P   = jnp.maximum(x[xmap['cmbr_P']],   s['Pa']),
     )
     
     return x, dx

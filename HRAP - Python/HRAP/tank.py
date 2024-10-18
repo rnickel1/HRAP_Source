@@ -1,3 +1,9 @@
+from core import store_x, make_part
+
+import jax.numpy as jnp
+from jax.lax import cond
+
+from functools import partial
 
 # Assume that pressure derivative is historical average
 def avg_liq_blowdown(x, dox_dT):
@@ -7,7 +13,7 @@ def avg_liq_blowdown(x, dox_dT):
     return Tdot, Pdot
 
 # Evaporation based liquid blowdown that falls back to average pressure drop if condensation is indicated
-def liq_blowdow(x, ox, dox_dT);
+def liq_blowdow(x, ox, dox_dT):
     # Get saturation density derivatives w.r.t. temperature
     drho_v__dT = dox_dT['rho_v']
     drho_l__dT = dox_dT['rho_l']
@@ -22,7 +28,7 @@ def liq_blowdow(x, ox, dox_dT);
     return cond(mdot_evap > 0.0, (Tdot, Tdot * dox_dT['Pv']), avg_liq_blowdown(x, dox_dT))
 
 # Assume vapor remains along saturation line, which has been experimentally validated for nitrous oxide
-def sat_vap_blowdown(T, m_ox, mdot_ox, ox, dox_dT)
+def sat_vap_blowdown(T, m_ox, mdot_ox, ox, dox_dT):
     delta = 1E-4 # FD step
     m_2__m_1 = (m_ox + mdot_ox*delta) / m_ox
     
@@ -86,19 +92,20 @@ def d_sat_tank(s, x, xmap, get_sat_props):
     mdot_inj = cond(m_liq == 0.0,
         (inj_CdA*inj_N*x.P_tnk/jnp.sqrt(T))*jnp.sqrt(1.31/(ox['Z']*188.91))*Mcc*(1+(0.31)/2*Mcc**2)**(-2.31/0.62),
         inj_CdA*inj_N*jnp.sqrt(2*rho_l*dP)
+    )
     
     # Total loss rate of oxidizer = base injected rate + vent rate
     mdot_ox = -(mdot_ox + mdot_vnt)
     
     # Add vent flow rate to injector rate if plumbed to chamber
-    mdot_inj = cond(s['vnt_S'] ~= 2, mdot_inj, mdot_inj + mdot_vnt)
+    mdot_inj = cond(s['vnt_S'] != 2, mdot_inj, mdot_inj + mdot_vnt)
     
     # Get temperature and pressure rates at various stages of blowdown
     Tdot, Pdot = cond(mdot_ox <= 0.0, (0.0, 0.0),
         cond(m_liq > 0.0,
             liq_blowdow(x, ox, dox_dT),
             sat_vap_blowdown(T, m_ox, mdot_ox, ox, dox_dT)
-        )
+    ))
     
     # Set temperature rate to 0 if outside supported range and not headed back
     
@@ -142,7 +149,7 @@ def make_sat_tank(get_sat_props, **kwargs):
         dx = { 'm_ox': 'mdot_ox', 'T': 'Tdot' },
 
         # Designation and associated functions
-        type = 'cmbr',
+        typename = 'cmbr',
         fderiv  = partial(d_sat_tank, get_sat_props=get_sat_props),
         fupdate = u_sat_tank,
 
