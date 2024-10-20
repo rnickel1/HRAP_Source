@@ -98,7 +98,7 @@ def make_constOF_grain(shape, **kwargs):
 
         # Designation and associated functions
         typename = 'cmbr',
-        fderiv  = partial(d_grain_constOF, fshape=shape['fshape']),
+        fderiv  = partial(d_grain_constOF, fshape=shape['grn_shape_fshape']),
         fupdate = u_grain,
 
         # The user-specified static and initial dynamic variables

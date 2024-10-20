@@ -1,30 +1,76 @@
+import numpy as np
+
 import jax.numpy as jnp
 
-def make_part(s, x, req_s, req_x, dx, typename=None, fderiv=None, fupdate=None, **kwargs):
-    item = {
-        's': { **s },
-        'x': { **x },
+
+def make_part(s, x, req_s, req_x, dx, typename=None, finit=None, fderiv=None, fupdate=None, **kwargs):
+    part = {
+        's': { },
+        'x': { },
+        # 's': { **s },
+        # 'x': { **x },
         'dx': dx,
         'type': typename,
+        'finit': finit,
         'fderiv': fderiv,
         'fupdate': fupdate,
     }
     for key, val in kwargs.items():
-        item[key] = val
-
-    return item
+        # TODO: error if entry already exists
+        if key in s:
+            part['s'][typename + '_' + key] = val
+        elif key in x:
+            part['x'][typename + '_' + key] = val
+        else:
+            part[typename + '_' + key] = val
+    for deriv in dx:
+        part['x'][] = 0.0
+    # print('dx before', part['dx'])
+    part['dx'] = { typename+'_'+key: typename+'_'+val for key, val in part['dx'].items() }
+    # part['dx'] = { 'FUCK_'+key: val for key, val in part['dx'].items() }
+    # print('dx after', part['dx'])
+    print(part)
+    
+    return part
 
 def make_engine(tank, grn, cmbr, noz, **kwargs):
-    xmap = { }
-    s = { }
-    method = { 'fderivs': [], 'fupdates': [], 'diff_xmap': [], 'diff_dmap': [] }
+    xdict = { }
+    s     = { }
+    method = { 'finits': [], 'fderivs': [], 'fupdates': [], 'diff_xmap': [], 'diff_dmap': [] }
+    for part in [tank, grn, cmbr, noz]:
+        print('part x', part['x'])
+        print('part s', part['s'])
+        
+        if part['finit'] != None:
+            method['finits'].append(part['finit'])
+        if part['fderiv'] != None:
+            method['fderivs'].append(part['fderiv'])
+        if part['fupdate'] != None:
+            method['fupdates'].append(part['fupdate'])
+        
+        for key, val in part['x'].items():
+            xdict[key] = val
+        for key, val in part['s'].items():
+            s[key] = val
 
-    x = jnp.zeros(len(xmap.values))
+    Nx = len(xdict.keys())
+    xmap = { key: i for key, i in zip(xdict.keys(), range(Nx)) }
+    print(xmap)
+    print(xmap)
+    x = np.zeros(Nx)
+    for part in [tank, grn, cmbr, noz]:
+        print('PART X', part['x'])
+        for key, val in part['x'].items():
+            x[xmap[key]] = val
+        for key, val in part['dx'].items():
+            print(key, val)
+            method['diff_xmap'].append(xmap[part['dx'][key]])
+            method['diff_dmap'].append(xmap[part['dx'][val]])
 
     method['diff_xmap'] = jnp.array(diff_xmap)
     method['diff_dmap'] = jnp.array(diff_dmap)
 
-    return s, x, method
+    return s, jnp.arrag(x), method
 
 def store_x(x, xmap, **kwargs):
     for key, val in kwargs.items():
