@@ -1,5 +1,8 @@
 from core import store_x, make_part
 
+import numpy as np
+
+import jax
 import jax.numpy as jnp
 from jax.lax import cond
 
@@ -16,18 +19,18 @@ def M_solve(k, ER):
 
         return (error, Me, k, ER)
 
-    res = jax.lax.while_loop(jnp.abs(val[0]) < 1E-8, body, (1.0, 3.0, k, ER))
+    res = jax.lax.while_loop(lambda val: jnp.abs(val[0]) < 1E-8, body, (1.0, 3.0, k, ER))
     
     return res[1]
 
-def d_cd_nozzle(s, x, dx, smap, xmap):
+def d_cd_nozzle(s, x, xmap):
     Pt     = x[xmap['cmbr_P']]          # Chamber pressure
     Pa     = s['Pa']                    # Atmosphere pressure
     k      = x[xmap['cmbr_k']]          # Specific heat ratio
     A_thrt = np.pi/4 * s['noz_thrt']**2 # Nozzle throat area
     
     # Nozzle mass flow rate
-    mdot = cond(Pt <= Pa, 0.0, Pt*s['noz_Cd'] * A_thrt/s['cstar'])
+    mdot = cond(Pt <= Pa, lambda v: 0.0, lambda v: v, Pt*s['noz_Cd'] * A_thrt/x[xmap['cmbr_cstar']])
     
     # Exit Mach
     Me = M_solve(k, s['noz_ER'])
@@ -47,7 +50,7 @@ def d_cd_nozzle(s, x, dx, smap, xmap):
     # Store state
     x = store_x(x, xmap, noz_mdot=mdot, noz_Me=Me, noz_Pe=Pe, noz_thrust=thrust)
 
-    return x, dx
+    return x
 
 def make_cd_nozzle(**kwargs):
     return make_part(

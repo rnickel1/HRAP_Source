@@ -1,6 +1,8 @@
 import sys
 sys.path.insert(1, '../HRAP/')
 
+import scipy
+
 import core
 from tank    import *
 from grain   import *
@@ -38,9 +40,27 @@ noz = make_cd_nozzle(
     ER = 4.0,         # Exit/throat area ratio
 )
 
+chem = scipy.io.loadmat('../../propellant_configs/HTPB.mat')
+chem = chem['s'][0][0]
+chem_OF = chem[1].ravel()
+chem_Pc = chem[0].ravel()
+chem_k = chem[2]
+chem_M = chem[3]
+chem_T = chem[4]
+print(chem_OF)
+print(chem_Pc)
+print(chem_k)
+
+# TODO: Make sure second arg arrays are right transposed
+from jax.scipy.interpolate import RegularGridInterpolator
+chem_interp_k = RegularGridInterpolator((chem_OF, chem_Pc), chem_k)
+chem_interp_M = RegularGridInterpolator((chem_OF, chem_Pc), chem_M)
+chem_interp_T = RegularGridInterpolator((chem_OF, chem_Pc), chem_T)
+
 s, x, method = core.make_engine(
     tank, grn, cmbr, noz,
-    cstar=1,
+    chem_interp_k=chem_interp_T, chem_interp_M=chem_interp_M, chem_interp_T=chem_interp_T,
+    Pa=101e3,
 )
 
 
@@ -53,7 +73,11 @@ fire_engine = core.make_integrator(
 )
 
 # Integrate the engine state
+print('run 1')
 t, x, xstack = fire_engine(s, x, dt=1E-2, T=10.0)
+print('run 2')
+t, x, xstack = fire_engine(s, x, dt=1E-2, T=10.0)
+print('done')
 
 # Unpack the dynamic engine state
 tank, grn, cmbr, noz = unpack_engine(s, x, xstack)

@@ -1,19 +1,28 @@
 from core import store_x, make_part
 
+import numpy as np
+
 import jax.numpy as jnp
 from jax.lax import cond
 
 from functools import partial
 
 def d_grain_constOF(s, x, xmap, fshape):
-    mdot_ox = x[xmap['']]
+    mdot_ox = x[xmap['tnk_mdot_ox']]
+    A = x[xmap['grn_A']]
     d = x[xmap['grn_d']]
     L   = s['grn_L']
     rho = s['grn_rho']
-    
+    OF = s['grn_OF']
     
     # Current arc length of exposed grain on the cross section
     arc = fshape(d, s, x, xmap)
+    
+    # Current volume
+    V = L * A
+    
+    # Grain consumption rate
+    mdot = mdot_ox / OF
     
     # Rate of volume consumption (positive)
     Vdot = rho * mdot
@@ -25,7 +34,7 @@ def d_grain_constOF(s, x, xmap, fshape):
     ddot = Adot / arc
     
     # Store result
-    dx = store_x(x, xmap, grn_Adot=Adot, grn_ddot=ddot)
+    x = store_x(x, xmap, grn_Adot=Adot, grn_ddot=ddot, grn_V=V, grn_Vdot=Vdot, cmbr_OF=OF)
 
     return x
 
@@ -53,22 +62,16 @@ def make_circle_shape(**kwargs):
         # Default static and initial dynamic variables
         s = {
             'ID': 0.1,
-            'L': 0.1,
-            'OF': 1.0,
-            'rho': 1000.0,
         },
         x = {
-            'A': 0.1,
-            'P': 101e3,
-            'd': 0.0,   # Distance regressed, i.e. increasing
         },
         
         # Required and integrated variables
-        req_s = ['OD', 'L', 'OF'],
-        req_x = ['A'],
-        dx    = {'A': 'Adot', 'd': 'ddot'},
+        req_s = ['ID'],
+        req_x = [],
+        dx    = { },
 
-        typename = 'grn_shape',
+        typename = 'shape',
 
         fshape = fcircle,
 
@@ -84,11 +87,19 @@ def make_constOF_grain(shape, **kwargs):
             'L': 0.1,
             'OF': 1.0,
             'rho': 1000.0,
+            **shape['s'],
         },
         x = {
             'A': 0.1,
-            'P': 101e3,
             'd': 0.0,   # Distance regressed, i.e. increasing
+            
+            # Calculated variables
+            'V': 0.0,
+            'Vdot': 0.0,
+            'P': 101e3,
+            'mdot': 0.0,
+            
+            **shape['x'],
         },
         
         # Required and integrated variables
@@ -97,8 +108,8 @@ def make_constOF_grain(shape, **kwargs):
         dx    = {'A': 'Adot', 'd': 'ddot'},
 
         # Designation and associated functions
-        typename = 'cmbr',
-        fderiv  = partial(d_grain_constOF, fshape=shape['grn_shape_fshape']),
+        typename = 'grn',
+        fderiv  = partial(d_grain_constOF, fshape=shape['shape_fshape']),
         fupdate = u_grain,
 
         # The user-specified static and initial dynamic variables

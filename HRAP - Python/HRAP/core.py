@@ -1,5 +1,8 @@
+import time
+
 import numpy as np
 
+import jax
 import jax.numpy as jnp
 
 
@@ -15,6 +18,13 @@ def make_part(s, x, req_s, req_x, dx, typename=None, finit=None, fderiv=None, fu
         'fderiv': fderiv,
         'fupdate': fupdate,
     }
+    
+    # Load defaults
+    for key, val in s.items():
+        part['s'][typename + '_' + key] = val
+    for key, val in x.items():
+        part['x'][typename + '_' + key] = val
+    
     for key, val in kwargs.items():
         # TODO: error if entry already exists
         if key in s:
@@ -23,13 +33,16 @@ def make_part(s, x, req_s, req_x, dx, typename=None, finit=None, fderiv=None, fu
             part['x'][typename + '_' + key] = val
         else:
             part[typename + '_' + key] = val
-    for deriv in dx:
-        part['x'][] = 0.0
     # print('dx before', part['dx'])
     part['dx'] = { typename+'_'+key: typename+'_'+val for key, val in part['dx'].items() }
+    
+    # Add derivatives to x
+    for key, val in part['dx'].items():
+        part['x'][val] = 0.0
     # part['dx'] = { 'FUCK_'+key: val for key, val in part['dx'].items() }
     # print('dx after', part['dx'])
-    print(part)
+    # print(part)
+    # print()
     
     return part
 
@@ -37,9 +50,14 @@ def make_engine(tank, grn, cmbr, noz, **kwargs):
     xdict = { }
     s     = { }
     method = { 'finits': [], 'fderivs': [], 'fupdates': [], 'diff_xmap': [], 'diff_dmap': [] }
+    
+    # Add static variables not related to an individual item
+    for key, val in kwargs.items():
+        s[key] = val
+    
     for part in [tank, grn, cmbr, noz]:
-        print('part x', part['x'])
-        print('part s', part['s'])
+        # print('part x', part['x'])
+        # print('part s', part['s'])
         
         if part['finit'] != None:
             method['finits'].append(part['finit'])
@@ -55,22 +73,22 @@ def make_engine(tank, grn, cmbr, noz, **kwargs):
 
     Nx = len(xdict.keys())
     xmap = { key: i for key, i in zip(xdict.keys(), range(Nx)) }
-    print(xmap)
-    print(xmap)
+    # print(xmap)
     x = np.zeros(Nx)
     for part in [tank, grn, cmbr, noz]:
-        print('PART X', part['x'])
+        # print('PART X', part['x'])
         for key, val in part['x'].items():
             x[xmap[key]] = val
         for key, val in part['dx'].items():
-            print(key, val)
-            method['diff_xmap'].append(xmap[part['dx'][key]])
-            method['diff_dmap'].append(xmap[part['dx'][val]])
+            # print(key, val)
+            method['diff_xmap'].append(xmap[key])
+            method['diff_dmap'].append(xmap[val])
+    
+    method['xmap'] = xmap
+    method['diff_xmap'] = jnp.array(method['diff_xmap'])
+    method['diff_dmap'] = jnp.array(method['diff_dmap'])
 
-    method['diff_xmap'] = jnp.array(diff_xmap)
-    method['diff_dmap'] = jnp.array(diff_dmap)
-
-    return s, jnp.arrag(x), method
+    return s, jnp.array(x), method
 
 def store_x(x, xmap, **kwargs):
     for key, val in kwargs.items():
@@ -129,17 +147,18 @@ def step_rk4(
 # Output must be called before getting a new integrator or the behavior of the old one will be undefined
 def make_integrator(fstep, method):
     def fderiv(s, x, xmap):
-        for fderiv in method.fderivs:
+        for fderiv in method['fderivs']:
             x = fderiv(s, x, xmap)
         
         return x
 
     def step_t(i, args):
-        t, dt, s, x = args
+        t, dt, s, x, xmap, xstack = args
 
-        x = fstep(s, x, xmap, method.diff_xmap, method.diff_dmap, dt, fderiv)
+        x = fstep(s, x, xmap, method['diff_xmap'], method['diff_dmap'], dt, fderiv)
+        xstack = xstack.at[i, :].set(x)
 
-        return t, dt, s, x
+        return t, dt, s, x, xmap, xstack
 
     # Note that under compilation, xmap etc. become fixed
     def run_solver(s, x, dt=1E-2, T=10.0, method=method):
@@ -155,17 +174,17 @@ def make_integrator(fstep, method):
         #     method
 
         Nt = int(np.ceil(T / dt))
-        xstack = jnp.zeros((Nt, method.diff_xmap.size))
+        xstack = jnp.zeros((Nt, x.size))
 
         # Run solver while loop and record elapsed wall time
         wall_t1 = time.time()
         # t, _, _, x = jax.lax.while_loop(lambda args: args[0] < T, step_t, (t, dt, s, x))
-        t, _, _, x = jax.lax.fori_loop(0, Nt+1, step_t, (t, dt, s, x))
+        t, _, _, x, _, xstack = jax.lax.fori_loop(0, Nt+1, step_t, (t, dt, s, x, method['xmap'], xstack)) # TODO: jit outside!
         wall_t2 = time.time()
 
         print('Solved in', wall_t2 - wall_t1, 's')
 
         return t, x, xstack
     
-    return jax.jit(method)
+    return run_solver
     # TODO: use pytree vmap
