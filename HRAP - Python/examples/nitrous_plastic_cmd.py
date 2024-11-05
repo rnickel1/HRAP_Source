@@ -2,6 +2,9 @@ import sys
 sys.path.insert(1, '../HRAP/')
 
 import scipy
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 
 import core
 from tank    import *
@@ -19,7 +22,7 @@ dearpygui
 """
 
 # Initialization
-tank = make_sat_tank(
+tnk = make_sat_tank(
     get_sat_nos_props,
     V = 0.01,
     inj_CdA=0.01,
@@ -58,7 +61,7 @@ chem_interp_M = RegularGridInterpolator((chem_OF, chem_Pc), chem_M)
 chem_interp_T = RegularGridInterpolator((chem_OF, chem_Pc), chem_T)
 
 s, x, method = core.make_engine(
-    tank, grn, cmbr, noz,
+    tnk, grn, cmbr, noz,
     chem_interp_k=chem_interp_T, chem_interp_M=chem_interp_M, chem_interp_T=chem_interp_T,
     Pa=101e3,
 )
@@ -73,14 +76,21 @@ fire_engine = core.make_integrator(
 )
 
 # Integrate the engine state
+T = 0.1
 print('run 1')
-t, x, xstack = fire_engine(s, x, dt=1E-2, T=10.0)
+t, x, xstack = fire_engine(s, x, dt=1E-2, T=T)
 print('run 2')
-t, x, xstack = fire_engine(s, x, dt=1E-2, T=10.0)
+t, x, xstack = fire_engine(s, x, dt=1E-2, T=T)
 print('done')
+N_t = xstack.shape[0]
+# print(xstack.shape)
 
 # Unpack the dynamic engine state
-tank, grn, cmbr, noz = unpack_engine(s, x, xstack)
+tnk, grn, cmbr, noz = core.unpack_engine(s, xstack, method)
+print('tnk', tnk.keys())
+print('grn', grn.keys())
+print('cmbr', cmbr.keys())
+print('noz', noz.keys())
 
 
 
@@ -89,10 +99,10 @@ fig, axs = plt.subplots(nrows=2, ncols=2, figsize=(12,7))
 axs = np.array(axs).ravel()
 
 # Plot thrust
-axs[0].plot(t, noz['thrust'])
+axs[0].plot(np.linspace(0.0, T, N_t), noz['thrust'])
 
 # Plot oxidizer flow rate
-axs[0].plot(t, tank['mdot_ox'])
+axs[0].plot(np.linspace(0.0, T, N_t), tnk['mdot_ox'])
 
 # Plot nozzle flow rate
 
@@ -100,4 +110,7 @@ axs[0].plot(t, tank['mdot_ox'])
 fig.show()
 
 # Save plot
+Path('./results').mkdir(parents=True, exist_ok=True)
 fig.savefig(str(f'./results/nitrous_plastic_plots')+'.pdf', format='pdf', bbox_inches='tight', pad_inches=0.1)
+
+plt.show()

@@ -6,6 +6,7 @@ import jax
 import jax.numpy as jnp
 
 
+
 def make_part(s, x, req_s, req_x, dx, typename=None, finit=None, fderiv=None, fupdate=None, **kwargs):
     part = {
         's': { },
@@ -87,8 +88,27 @@ def make_engine(tank, grn, cmbr, noz, **kwargs):
     method['xmap'] = xmap
     method['diff_xmap'] = jnp.array(method['diff_xmap'])
     method['diff_dmap'] = jnp.array(method['diff_dmap'])
+    method['comp_names'] = [ 'tnk', 'grn', 'cmbr', 'noz' ]
 
     return s, jnp.array(x), method
+
+def unpack_engine(s, xstack, method):
+    xmap = method['xmap']
+    comp_names = method['comp_names']
+    comps = [ { } for comp_name in comp_names ]
+    
+    for i in range(len(comp_names)):
+        prefix = comp_names[i]
+        # Unpack relevant x entries
+        for xname in xmap:
+            if xname.startswith(prefix):
+                comps[i][xname[len(prefix)+1:]] = xstack[:,xmap[xname]]
+        # Unpack relevant s entries
+        for sname in s:
+            if sname.startswith(prefix):
+                comps[i][sname[len(prefix)+1:]] = s[sname]  
+    
+    return comps
 
 def store_x(x, xmap, **kwargs):
     for key, val in kwargs.items():
