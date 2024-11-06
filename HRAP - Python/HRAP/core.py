@@ -7,7 +7,7 @@ import jax.numpy as jnp
 
 
 
-def make_part(s, x, req_s, req_x, dx, typename=None, finit=None, fderiv=None, fupdate=None, **kwargs):
+def make_part(s, x, req_s, req_x, dx, typename=None, fpreprs=None, fderiv=None, fupdate=None, **kwargs):
     part = {
         's': { },
         'x': { },
@@ -15,7 +15,7 @@ def make_part(s, x, req_s, req_x, dx, typename=None, finit=None, fderiv=None, fu
         # 'x': { **x },
         'dx': dx,
         'type': typename,
-        'finit': finit,
+        'fpreprs': fpreprs,
         'fderiv': fderiv,
         'fupdate': fupdate,
     }
@@ -39,6 +39,7 @@ def make_part(s, x, req_s, req_x, dx, typename=None, finit=None, fderiv=None, fu
     
     # Add derivatives to x
     for key, val in part['dx'].items():
+        print(val, 'to', 0.0)
         part['x'][val] = 0.0
     # part['dx'] = { 'FUCK_'+key: val for key, val in part['dx'].items() }
     # print('dx after', part['dx'])
@@ -50,7 +51,7 @@ def make_part(s, x, req_s, req_x, dx, typename=None, finit=None, fderiv=None, fu
 def make_engine(tank, grn, cmbr, noz, **kwargs):
     xdict = { }
     s     = { }
-    method = { 'finits': [], 'fderivs': [], 'fupdates': [], 'diff_xmap': [], 'diff_dmap': [] }
+    method = { 'fpreprs': [], 'fderivs': [], 'fupdates': [], 'diff_xmap': [], 'diff_dmap': [] }
     
     # Add static variables not related to an individual item
     for key, val in kwargs.items():
@@ -60,8 +61,8 @@ def make_engine(tank, grn, cmbr, noz, **kwargs):
         # print('part x', part['x'])
         # print('part s', part['s'])
         
-        if part['finit'] != None:
-            method['finits'].append(part['finit'])
+        if part['fpreprs'] != None:
+            method['fpreprs'].append(part['fpreprs'])
         if part['fderiv'] != None:
             method['fderivs'].append(part['fderiv'])
         if part['fupdate'] != None:
@@ -176,6 +177,10 @@ def make_integrator(fstep, method):
         t, dt, s, x, xmap, xstack = args
 
         x = fstep(s, x, xmap, method['diff_xmap'], method['diff_dmap'], dt, fderiv)
+
+        for fupdate in method['fupdates']:
+            x = fupdate(s, x, xmap)
+
         xstack = xstack.at[i, :].set(x)
 
         return t, dt, s, x, xmap, xstack
@@ -195,11 +200,18 @@ def make_integrator(fstep, method):
 
         Nt = int(np.ceil(T / dt))
         xstack = jnp.zeros((Nt, x.size))
+        # print('AGFFSAGAGS', x[method['xmap']['tnk_m_ox']])
+
+        for fpreprs in method['fpreprs']:
+            x = fpreprs(s, x, method['xmap'])
+        
+        xstack = xstack.at[0, :].set(x)
 
         # Run solver while loop and record elapsed wall time
         wall_t1 = time.time()
-        # t, _, _, x = jax.lax.while_loop(lambda args: args[0] < T, step_t, (t, dt, s, x))
-        t, _, _, x, _, xstack = jax.lax.fori_loop(0, Nt+1, step_t, (t, dt, s, x, method['xmap'], xstack)) # TODO: jit outside!
+        t, _, _, x, _, xstack = jax.lax.fori_loop(1, Nt+1, step_t, (t, dt, s, x, method['xmap'], xstack)) # TODO: jit outside!
+        # for i in range(1, Nt+1):
+        #     t, _, _, x, _, xstack = step_t(i, (t, dt, s, x, method['xmap'], xstack))
         wall_t2 = time.time()
 
         print('Solved in', wall_t2 - wall_t1, 's')

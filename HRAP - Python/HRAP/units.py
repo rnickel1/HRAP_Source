@@ -4,4 +4,5 @@
 #   Temperature - Kelvin
 #   Pressure    - Pascals
 
-_in = 1
+_in = 0.0254
+_ft = _in*12

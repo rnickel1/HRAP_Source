@@ -8,7 +8,7 @@ from jax.lax import cond
 from functools import partial
 
 def d_grain_constOF(s, x, xmap, fshape):
-    mdot_ox = x[xmap['tnk_mdot_ox']]
+    mdot_inj = x[xmap['tnk_mdot_inj']] # TODO: using vent?
     A = x[xmap['grn_A']]
     d = x[xmap['grn_d']]
     L   = s['grn_L']
@@ -22,10 +22,10 @@ def d_grain_constOF(s, x, xmap, fshape):
     V = L * A
     
     # Grain consumption rate
-    mdot = mdot_ox / OF
+    mdot = -mdot_inj / OF
     
     # Rate of volume consumption (positive)
-    Vdot = rho * mdot
+    Vdot = mdot / rho
     
     # Rate of cross section area loss
     Adot = Vdot / L
@@ -34,7 +34,7 @@ def d_grain_constOF(s, x, xmap, fshape):
     ddot = Adot / arc
     
     # Store result
-    x = store_x(x, xmap, grn_Adot=Adot, grn_ddot=ddot, grn_V=V, grn_Vdot=Vdot, cmbr_OF=OF)
+    x = store_x(x, xmap, grn_Adot=Adot, grn_ddot=ddot, grn_V=V, grn_mdot=mdot, grn_Vdot=Vdot, cmbr_OF=OF)
 
     return x
 
@@ -50,9 +50,9 @@ def u_grain(s, x, xmap):
     
     return x
 
-def i_circle(s, x, xmap):
+# def i_circle(s, x, xmap):
     
-    return s, x
+#     return s, x
 
 def make_circle_shape(**kwargs):
     def fcircle(d, s, x, xmap):

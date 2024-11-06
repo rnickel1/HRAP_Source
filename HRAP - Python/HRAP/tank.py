@@ -154,14 +154,22 @@ def d_sat_tank(s, x, xmap, get_sat_props):
     
     return x
 
+def p_sat_tank(s, x0, xmap):
+
+    # x0 = store_x(x0, xmap, cmbr_V=V)
+
+    return x0
+
 def u_sat_tank(s, x, xmap):
     x = store_x(x, xmap,
         # Limit to reasonable values
-        m_ox = jnp.maximum(x[xmap['m_ox']], 0.0),
+        tnk_m_ox = jnp.maximum(x[xmap['tnk_m_ox']], 0.0),
         # Record needed for avg pressure drop blowdown model
         tnk_Pdot_sum = x[xmap['tnk_Pdot_sum']] + x[xmap['tnk_Pdot']],
         tnk_Pdot_N = x[xmap['tnk_Pdot_N']] + 1,
     )
+
+    return x
 
 def make_sat_tank(get_sat_props, **kwargs):
     return make_part(
@@ -198,6 +206,7 @@ def make_sat_tank(get_sat_props, **kwargs):
 
         # Designation and associated functions
         typename = 'tnk',
+        fpreprs = p_sat_tank,
         fderiv  = partial(d_sat_tank, get_sat_props=get_sat_props),
         fupdate = u_sat_tank,
 
