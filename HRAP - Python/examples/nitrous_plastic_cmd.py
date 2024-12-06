@@ -15,6 +15,9 @@ from nozzle  import *
 from sat_nos import *
 from units   import _in, _ft
 
+jax.config.update("jax_enable_x64", True)
+# np.random.seed(42)
+
 """
 numpy
 scipy
@@ -27,25 +30,27 @@ tnk = make_sat_tank(
     get_sat_nos_props,
     V = (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
     inj_CdA= 0.5 * (np.pi/4 * 0.5**2 * _in**2),
-    m_ox=7.0, # TODO: init limit
+    m_ox=14.0, # TODO: init limit
+    # m_ox = 3.0,
 )
 # print('INJ TEST', 0.5 * (np.pi/4 * 0.5**2 * _in**2))
 
 shape = make_circle_shape(
-    ID = 2.0 * _in,
+    ID = 2.5 * _in,
 )
 grn = make_constOF_grain(
     shape,
+    OF = 3.0,
     OD = 5.0 * _in,
-    L = 2.0 * _ft,
+    L = 4.0 * _ft,
 )
 
 cmbr = make_chamber(
 )
 
 noz = make_cd_nozzle(
-    thrt = 0.5 * _in, # Throat diameter
-    ER = 4.0,         # Exit/throat area ratio
+    thrt = 1.5 * _in, # Throat diameter
+    ER = 5.0,         # Exit/throat area ratio
 )
 
 chem = scipy.io.loadmat('../../propellant_configs/HTPB.mat')
@@ -76,14 +81,16 @@ s, x, method = core.make_engine(
 # Create the function for firing engines
 #   This will be compiled the first time you call it during a run
 fire_engine = core.make_integrator(
-    core.step_rk4,
+    # core.step_rk4,
+    core.step_fe,
     method,
 )
 
 # Integrate the engine state
-T = 0.5
+# T = 1.0
+T = 10.0
 print('run 1')
-t, x, xstack = fire_engine(s, x, dt=1E-2, T=T)
+t, x, xstack = fire_engine(s, x, dt=1E-3, T=T)
 # print('run 2')
 # TODO: new x0!
 # t, x, xstack = fire_engine(s, x, dt=1E-2, T=T)
@@ -108,19 +115,37 @@ for name, obj in (('tnk', tnk), ('grn', grn), ('cmbr', cmbr), ('noz', noz)):
 
 
 # Visualization
-fig, axs = plt.subplots(nrows=2, ncols=2, figsize=(12,7))
+fig, axs = plt.subplots(nrows=2, ncols=3, figsize=(12,7))
 axs = np.array(axs).ravel()
 
 # Plot thrust
 axs[0].plot(np.linspace(0.0, T, N_t), noz['thrust'])
+axs[0].set_title('Thrust')
 
 # Plot oxidizer flow rate
-axs[0].plot(np.linspace(0.0, T, N_t), tnk['mdot_ox'])
+axs[1].plot(np.linspace(0.0, T, N_t), tnk['mdot_ox'], label='mdot_ox')
+axs[1].plot(np.linspace(0.0, T, N_t), tnk['mdot_inj'], label='mdot_inj')
+axs[1].plot(np.linspace(0.0, T, N_t), tnk['mdot_vnt'], label='mdot_vnt')
+axs[1].legend()
+
+axs[1].set_title('mdot_ox')
+
+axs[2].plot(np.linspace(0.0, T, N_t), tnk['P'] - cmbr['P'])
+axs[2].set_title('Ptank - Pchamber')
+
+axs[3].plot(np.linspace(0.0, T, N_t), tnk['T'])
+axs[3].set_title('T tank')
+
+axs[4].plot(np.linspace(0.0, T, N_t), tnk['m_ox_liq'])
+axs[4].plot(np.linspace(0.0, T, N_t), tnk['m_ox_vap'])
+axs[4].set_title('m tank')
+
+
 
 # Plot nozzle flow rate
 
 # Open plot
-fig.show()
+# fig.show()
 
 # Save plot
 Path('./results').mkdir(parents=True, exist_ok=True)

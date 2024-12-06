@@ -117,6 +117,14 @@ def store_x(x, xmap, **kwargs):
     
     return x
 
+def step_fe(
+    s, x, xmap, diff_xmap, diff_dmap,
+    dt, fderiv,
+):
+    x = fderiv(s, x, xmap)
+    
+    return x.at[diff_xmap].add(dt*x[diff_dmap])
+
 def step_rk(
     s, x, xmap, diff_xmap, diff_dmap,
     dt, fderiv,

@@ -12,17 +12,17 @@ def d_chamber(s, x, xmap):
     inj_mdot = x[xmap['tnk_mdot_inj']]      # Rate of tank propellants being consumed
     noz_mdot = x[xmap['noz_mdot']]      # Rate of mass exiting through nozzle
     m_g      = x[xmap['cmbr_m_g']]      # Mass of gas currently in chamber
-    V        = x[xmap['cmbr_V']] - x[xmap['grn_V']] # Gas volume in chamber
+    V        = x[xmap['cmbr_V0']] - x[xmap['grn_V']] # Gas volume in chamber
     dV       = x[xmap['grn_Vdot']] # Gas volume in chamber derivative
     OF       = x[xmap['cmbr_OF']] # O/F ratio, set by grain file
 
     # Chamber stored mass derivative
     mdot_g = -grn_mdot + inj_mdot - noz_mdot
-    mdot_g = cond(m_g <= 0.0 and mdot_g < 0.0, lambda val: 0.0, lambda val: val, mdot_g)
+    mdot_g = cond((m_g <= 0.0) & (mdot_g < 0.0), lambda val: 0.0, lambda val: val, mdot_g)
 
     # Chamber pressure derivative
     Pdot = Pc*(mdot_g/m_g - dV/V)
-    Pdot = cond(Pc <= s['Pa'] and Pdot < 0.0, lambda val: 0.0, lambda val: val, Pdot)
+    Pdot = cond(((Pc <= s['Pa']) & (Pdot < 0.0)) | (m_g <= 0.0), lambda val: 0.0, lambda val: val, Pdot)
     
     # Get chamber properties and update cstar
     interp_point = jnp.array([[OF, Pc]])
@@ -40,11 +40,11 @@ def d_chamber(s, x, xmap):
 
 # Preprocessing
 def p_chamber(s, x0, xmap):
-    V = x0[xmap['cmbr_V']]
+    V0 = x0[xmap['cmbr_V0']]
     
-    V = cond(V == 0.0, lambda V0, V1: V1, lambda V0, V1: V0, V, s['grn_L']*s['grn_OD'])
+    V0 = cond(V0 == 0.0, lambda Va, Vb: Vb, lambda Va, Vb: Va,   V0, s['grn_L']*s['grn_OD'])
 
-    x0 = store_x(x0, xmap, cmbr_V=V)
+    x0 = store_x(x0, xmap, cmbr_V0=V0)
 
     return x0
 
@@ -68,7 +68,7 @@ def make_chamber(**kwargs):
         
         # Default initial variables
         x = {
-            'V': 0.0, # Empty volume, doesn't change after initialization
+            'V0': 0.0, # Empty volume, doesn't change after initialization
 
             'P':   101e3,
             'm_g': 1E-3,
