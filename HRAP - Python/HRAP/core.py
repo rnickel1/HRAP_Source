@@ -222,7 +222,7 @@ def make_integrator(fstep, method):
         #     t, _, _, x, _, xstack = step_t(i, (t, dt, s, x, method['xmap'], xstack))
         wall_t2 = time.time()
 
-        print('Solved in', wall_t2 - wall_t1, 's')
+        # print('Solved in', wall_t2 - wall_t1, 's')
 
         return t, x, xstack
     

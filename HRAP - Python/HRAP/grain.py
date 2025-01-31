@@ -91,7 +91,7 @@ def make_constOF_grain(shape, **kwargs):
         },
         x = {
             'A': 0.1,
-            'd': 0.0,   # Distance regressed, i.e. increasing
+            'd': 0.0,   # Distance regressed, i.e. increasing during burn
             
             # Calculated variables
             'V': 0.0,
