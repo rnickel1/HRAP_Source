@@ -94,6 +94,7 @@ def make_engine(tank, grn, cmbr, noz, **kwargs):
     return s, jnp.array(x), method
 
 def unpack_engine(s, xstack, method):
+    # print('COMPILING unpack_engine')
     xmap = method['xmap']
     comp_names = method['comp_names']
     comps = [ { } for comp_name in comp_names ]

@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: dgjax
+Version: 0.0.0
+Summary: HRAP is a versatile tool for simulation of hybrid rocket engines.
+Author: Thomas Scott, Drew Nickel
+Requires-Python: >=3.10
+Requires-Dist: jax
+Requires-Dist: jaxlib
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: dearpygui

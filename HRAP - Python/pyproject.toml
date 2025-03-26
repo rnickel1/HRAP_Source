@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=64.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dgjax"
+dynamic = ["version"]
+dependencies = [
+    "jax",
+    "jaxlib",
+    "numpy",
+	"scipy",
+	"dearpygui",
+]
+
+requires-python = ">= 3.10"
+
+authors = [
+    {name = "Thomas Scott"},
+	{name = "Drew Nickel"},
+]
+
+description = "HRAP is a versatile tool for simulation of hybrid rocket engines."
+
+[project.scripts]
+hrap = "hrap.examples.nitrous_hybrid_gui:main"
+#__main__ = "hrap.examples.nitrous_hybrid_gui:main"

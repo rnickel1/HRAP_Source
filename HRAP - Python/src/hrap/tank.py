@@ -1,4 +1,4 @@
-from core import store_x, make_part
+from hrap.core import store_x, make_part
 
 import jax
 import jax.numpy as jnp
@@ -43,6 +43,7 @@ def sat_vap_blowdown(T, m_ox, mdot_ox, ox, dP_dT, get_sat_props):
     delta = 1E-7 # FD step
     m_2__m_1 = (m_ox + mdot_ox*delta) / m_ox
     
+    # TODO: precompute high order curve-fit using complex step results
     def Z_body(args):
         eps, Z_i, Z_1, T_i, T_1, m_2__m_1 = args
         
@@ -167,6 +168,7 @@ def d_sat_tank(s, x, xmap, get_sat_props):
     
     return x
 
+# TODO: remove
 def p_sat_tank(s, x0, xmap):
 
     # x0 = store_x(x0, xmap, cmbr_V=V)

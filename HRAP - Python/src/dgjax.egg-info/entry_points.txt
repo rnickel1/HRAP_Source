@@ -1,0 +1,2 @@
+[console_scripts]
+hrap = hrap.examples.nitrous_hybrid_gui:main

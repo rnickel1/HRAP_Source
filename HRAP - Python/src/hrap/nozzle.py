@@ -1,4 +1,4 @@
-from core import store_x, make_part
+from hrap.core import store_x, make_part
 
 import numpy as np
 
