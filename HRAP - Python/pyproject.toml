@@ -1,10 +1,12 @@
 [build-system]
-requires = ["setuptools>=64.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
-name = "dgjax"
-dynamic = ["version"]
+name = "hrap"
+version = "0.0.1"
+
+# dynamic = ["version"]
 dependencies = [
     "jax",
     "jaxlib",
@@ -16,11 +18,14 @@ dependencies = [
 requires-python = ">= 3.10"
 
 authors = [
+    {name = "Drew Nickel"},
     {name = "Thomas Scott"},
-	{name = "Drew Nickel"},
 ]
 
 description = "HRAP is a versatile tool for simulation of hybrid rocket engines."
+
+[project.urls]
+Homepage = "https://github.com/rnickel1/HRAP_Source"
 
 [project.scripts]
 hrap = "hrap.examples.nitrous_hybrid_gui:main"
