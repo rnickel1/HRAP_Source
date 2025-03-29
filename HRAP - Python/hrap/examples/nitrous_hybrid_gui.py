@@ -86,19 +86,51 @@ def main():
             dpg.add_line_series([], [], label="Trust", parent="y_axis", tag="series_tag")
 
 
-    with dpg.window(tag='Tank', label='Tank', **settings):
-        dpg.add_text('Top Right Section')
+    # with dpg.window(tag='Tank', label='Tank', **settings):
+        # dpg.add_text('Top Right Section')
 
     with dpg.window(tag='Grain', label='Grain', **settings):
         dpg.add_text('Top Right Section')
 
+    tnk_config = {
+        'Volume': {
+            'type': float,
+            'key': 'V',
+            'min': 1E-9,
+            'max': 1.0,
+            'default': (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
+            'step': 1E-4,
+            'decimal': 6,
+        },
+        'Injector CdA': {
+            'type': float,
+            'key': 'inj_CdA',
+            'min': 1E-9,
+            'default': 0.5 * (np.pi/4 * 0.5**2 * _in**2),
+            'step': 1E-6,
+            'decimal': 6,
+        },
+        'Oxidizer Mass': {
+            'type': float,
+            'key': 'm_ox',
+            'min': 1E-3,
+            'max': 1E+3,
+            'default': 14.0,
+            'step': 1E-1,
+            'decimal': 3,
+        },
+        # V = (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
+        # inj_CdA= 0.5 * (np.pi/4 * 0.5**2 * _in**2),
+        # m_ox=14.0
+    }
+    
     # TODO: add info descriptions!
     cmbr_config = {
         'Base Volume [m^3]': {
             'type': float,
-            'key': 'V',
+            'key': 'V0',
             'min': 0.0,
-            'step': 1E-5,
+            'step': 1E-4,
             'decimal': 6,
         },
     }
@@ -153,9 +185,10 @@ def main():
                         dpg.set_value(props['uuid'], props['default'])
                     # dpg.add_text(key)
 
+    make_part_window('Tank', tnk_config)
     make_part_window('Chamber', cmbr_config)
     make_part_window('Nozzle', noz_config)
-    part_configs = { 'cmbr': cmbr_config, 'noz': noz_config }
+    part_configs = { 'cmbr': cmbr_config, 'noz': noz_config, 'tnk': tnk_config }
 
 
     # with dpg.window(tag='Nozzle', label='Nozzle', **settings):
@@ -184,7 +217,7 @@ def main():
         get_sat_nos_props,
         V = (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
         inj_CdA= 0.5 * (np.pi/4 * 0.5**2 * _in**2),
-        m_ox=14.0, # TODO: init limit
+        m_ox=1,#14.0, # TODO: init limit
         # m_ox = 3.0,
     )
     # print('INJ TEST', 0.5 * (np.pi/4 * 0.5**2 * _in**2))
@@ -246,7 +279,15 @@ def main():
                     dpg.set_value(props['uuid'], props['max'])
             
             for value_config in part_config.values():
-                s[part_name+'_'+value_config['key']] = dpg.get_value(value_config['uuid'])
+                # print('set', part_name+'_'+value_config['key'], s[part_name+'_'+value_config['key']], '->', dpg.get_value(value_config['uuid']))
+                k = part_name+'_'+value_config['key']
+                v = dpg.get_value(value_config['uuid'])
+                if k in s:
+                    s[k] = v
+                elif k in method['xmap']:
+                    x = x.at[method['xmap'][k]].set(v)
+                else:
+                    print('ERROR:', k, 'is nowhere!')
         # t2 = time.time()
         # print('v check took', t2-t1)
         
