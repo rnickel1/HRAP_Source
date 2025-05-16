@@ -254,6 +254,13 @@ def main():
 
     resize_windows()
     dpg.set_viewport_resize_callback(resize_windows)
+    
+    upd_wall_dT = 0.5 # minimum time between relevant engine updates
+    upd_wall_t = time.time() - 2*upd_wall_dT # time of last update
+    
+    targ_fps = 24
+    frame_wall_dT = 1/targ_fps
+    
 
     # dpg.add_text('Output')
     # dpg.add_input_text(label='file name')
@@ -264,11 +271,12 @@ def main():
 
     _unpack_engine = jax.jit(partial(core.unpack_engine, method=method))
 
-    wall_t0 = time.time()
+    fps_wall_t = time.time()
     fps_i = 0
     while dpg.is_dearpygui_running():
+        wall_t = time.time()
         
-        t1 = time.time()
+        # t1 = time.time()
         # TODO: can be done in callbacks?
         for part_name, part_config in part_configs.items():
             for key, props in part_config.items():
@@ -294,47 +302,38 @@ def main():
         
         # s['noz_eff'] = dpg.get_value(noz_config['Efficiency']['uuid'])
         # s['noz_thrt'] = dpg.get_value(noz_config['Throat Diameter [m]']['uuid'])
-        T = 10.0
-        t10 = time.time()
-        t, x1, xstack = fire_engine(s, x, dt=1E-3, T=T)
-        jax.block_until_ready(xstack)
-        # t11 = time.time()
-        # tnk, grn, cmbr, noz = _unpack_engine(s, xstack)
+        if wall_t - upd_wall_t >= upd_wall_dT:
+            upd_wall_t = wall_t
         
-        # t12 = time.time()
-        # print(t12-t11, t11-t10)
-        # print(type(noz['thrust']))
-        N_t = xstack.shape[0]
-        t2 = time.time()
-        # print('sim took', t2-t1)
+            T = 10.0
+            t10 = time.time()
+            t, x1, xstack = fire_engine(s, x, dt=1E-3, T=T)
+            jax.block_until_ready(xstack)
+            # tnk, grn, cmbr, noz = _unpack_engine(s, xstack)
+            
+            N_t = xstack.shape[0]
+            t2 = time.time()
 
-        # 
-        thrust = xstack[:,method['xmap']['noz_thrust']]
-        # t10 = time.time()
-        # np.linspace(0.0, T, N_t)
-        #np.asarray(thrust[::10])
-        # jax.block_until_ready(thrust)
-        # np.asarray(jnp.zeros(10))
-        # np.zeros(10)
-        # TODO: this is slowest but that is only because this is where jax
-        print('a', thrust)
-        # dpg.set_value('series_tag', [np.linspace(0.0, T, N_t)[::10], np.linspace(0.0, T, N_t)[::10]])
-        dpg.set_value('series_tag', [np.linspace(0.0, T, N_t//10), np.asarray(thrust[::10])])
-        # t20 = time.time()+1e-5
-        print('Engine fps', 1/(t2-t10))
-        # dpg.set_value('series_tag', [np.linspace(0.0, T, N_t), np.asarray(noz['thrust'])])
+            thrust = xstack[:,method['xmap']['noz_thrust']]
+            # print(t.shape) # What happened to arr?
+            # dpg.set_value('series_tag', [np.asarray(t[::10]), np.asarray(thrust[::10])])
+            dpg.set_value('series_tag', [np.linspace(0.0, T, N_t//10), np.asarray(thrust[::10])])
+            print('max engine fps', 1/(t2-t10))
+            # dpg.set_value('series_tag', [np.linspace(0.0, T, N_t), np.asarray(noz['thrust'])])
 
-        # t1 = time.time()
         dpg.render_dearpygui_frame()
-        t2 = time.time()
-        # print('render took', t2-t1)
+        
+        wall_t_end = time.time()
+        extra_time = frame_wall_dT - (wall_t_end - wall_t)
+        if extra_time > 0.0:
+            time.sleep(extra_time)
 
-        fps_i += 1
-        wall_t = time.time()
-        if wall_t >= wall_t0 + 1.0:
-            print('FPS:', fps_i, '  freq', int(1/(t2-t1)))
-            fps_i = 0
-            wall_t0 = wall_t # TODO: + modulus
+        # TODO: show on frame somewhere, or use dpg.get_frame_rate()
+        # fps_i += 1
+        # if wall_t >= fps_wall_t + 1.0:
+            # print('FPS:', fps_i)#, '  freq', int(1/(t2-t1)))
+            # fps_i = 0
+            # fps_wall_t = wall_t # TODO: + modulus
 
     # dpg.start_dearpygui()
     dpg.destroy_context()
