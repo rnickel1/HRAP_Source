@@ -255,11 +255,13 @@ def main():
     resize_windows()
     dpg.set_viewport_resize_callback(resize_windows)
     
-    upd_wall_dT = 0.5 # minimum time between relevant engine updates
+    upd_max_fps = 4
+    upd_wall_dT = 1 / upd_max_fps # minimum time between relevant engine updates
     upd_wall_t = time.time() - 2*upd_wall_dT # time of last update
+    upd_due = True
     
-    targ_fps = 24
-    frame_wall_dT = 1/targ_fps
+    max_fps = 24
+    frame_wall_dT = 1/max_fps
     
 
     # dpg.add_text('Output')
@@ -291,9 +293,13 @@ def main():
                 k = part_name+'_'+value_config['key']
                 v = dpg.get_value(value_config['uuid'])
                 if k in s:
-                    s[k] = v
+                    if s[k] != v:
+                        s[k] = v
+                        upd_due = True
                 elif k in method['xmap']:
-                    x = x.at[method['xmap'][k]].set(v)
+                    if x[method['xmap'][k]] != v:
+                        x = x.at[method['xmap'][k]].set(v)
+                        upd_due = True
                 else:
                     print('ERROR:', k, 'is nowhere!')
         # t2 = time.time()
@@ -302,7 +308,8 @@ def main():
         
         # s['noz_eff'] = dpg.get_value(noz_config['Efficiency']['uuid'])
         # s['noz_thrt'] = dpg.get_value(noz_config['Throat Diameter [m]']['uuid'])
-        if wall_t - upd_wall_t >= upd_wall_dT:
+        if upd_due and wall_t - upd_wall_t >= upd_wall_dT:
+            upd_due = False
             upd_wall_t = wall_t
         
             T = 10.0
