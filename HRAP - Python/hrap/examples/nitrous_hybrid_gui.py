@@ -89,8 +89,8 @@ def main():
     # with dpg.window(tag='Tank', label='Tank', **settings):
         # dpg.add_text('Top Right Section')
 
-    with dpg.window(tag='Grain', label='Grain', **settings):
-        dpg.add_text('Top Right Section')
+    # with dpg.window(tag='Grain', label='Grain', **settings):
+        # dpg.add_text('Top Right Section')
 
     tnk_config = {
         'Volume': {
@@ -132,6 +132,34 @@ def main():
             'min': 0.0,
             'step': 1E-4,
             'decimal': 6,
+        },
+    }
+    
+    grain_config = {
+        'Outer diamater': {
+            'type': float,
+            'key': 'OD',
+            'min': 0.001,
+            'default': 5.0 * _in,
+            'step': 1E-3,
+            'decimal': 3,
+        },
+        'Length': {
+            'type': float,
+            'key': 'OD',
+            'min': 0.001,
+            'default': 5.0 * _ft,
+            'step': 1E-2,
+            'decimal': 3,
+        },
+        'Fixed O/F ratio': {
+            'type': float,
+            'key': 'OF',
+            'min': 0.01,
+            'max': 100.0,
+            'default': 5.0,
+            'step': 1E-1,
+            'decimal': 2,
         },
     }
 
@@ -186,9 +214,10 @@ def main():
                     # dpg.add_text(key)
 
     make_part_window('Tank', tnk_config)
+    make_part_window('Grain', grain_config)
     make_part_window('Chamber', cmbr_config)
     make_part_window('Nozzle', noz_config)
-    part_configs = { 'cmbr': cmbr_config, 'noz': noz_config, 'tnk': tnk_config }
+    part_configs = { 'cmbr': cmbr_config, 'noz': noz_config, 'tnk': tnk_config, 'grn': grain_config }
 
 
     # with dpg.window(tag='Nozzle', label='Nozzle', **settings):
