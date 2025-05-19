@@ -10,16 +10,26 @@ from functools import partial
 
 # Solve for exit mach given specific heat ratio and exit ratio
 def M_solve(k, ER):
-    def body(val):
-        _, Me, k, ER = val
+    def get_error(Me, k):
         error = ((k+1)/2)**(-(k+1)/ \
             (2*(k-1)))*(1+(k-1)/2*Me**2)** \
             ((k+1)/(2*(k-1)))/Me- \
             ER
+        
+        return error
+    
+    get_derror_dMe = jax.grad(get_error)
+    
+    def body(val):
+        _, Me, k, ER, i = val
+        
+        error = get_error(Me, k)
+        Me -= error / get_derror_dMe(Me, k)
 
-        return (error, Me, k, ER)
+        return (error, Me, k, ER, i+1)
 
-    res = jax.lax.while_loop(lambda val: jnp.abs(val[0]) < 1E-8, body, (1.0, 3.0, k, ER))
+    res = jax.lax.while_loop(lambda val: (jnp.abs(val[0]) > 1E-8) & (val[4]<10), body, (1.0, 3.0, k, ER, 0))
+    jax.debug.print('final error {a}, Me={c}, iter={b}', a=res[0], c=res[1], b=res[4])
     
     return res[1]
 
