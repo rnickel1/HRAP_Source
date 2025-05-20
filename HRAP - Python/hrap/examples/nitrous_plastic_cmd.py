@@ -105,13 +105,20 @@ fire_engine = core.make_integrator(
 # Integrate the engine state
 T = 10.0
 # T = 10E-2
+import time
 print('run 1')
+t1 = time.time()
+t, _x, xstack = fire_engine(s, x, dt=1E-3, T=T)
+jax.block_until_ready(xstack)
+t2  = time.time()
+print('run 2')
 t, x, xstack = fire_engine(s, x, dt=1E-3, T=T)
 jax.block_until_ready(xstack)
+t3 = time.time()
 # print('run 2')
 # TODO: new x0!
 # t, x, xstack = fire_engine(s, x, dt=1E-2, T=T)
-print('done')
+print('done', t3-t2, t2-t1)
 N_t = xstack.shape[0]
 # print(xstack.shape)
 
