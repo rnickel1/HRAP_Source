@@ -29,10 +29,13 @@ def d_chamber(s, x, xmap):
     # interp_point = jnp.array([[OF, Pc]])
     # TODO: Need an error if out of bounds?
     # _Pc = jnp.maximum()
-    interp_point = jnp.array([[OF, Pc]])
-    k = s['chem_interp_k'](interp_point)[0]
-    M = s['chem_interp_M'](interp_point)[0]
-    T = s['chem_interp_T'](interp_point)[0]
+    ig = s['chem_interp_k'].grid # interp grid
+    ip = jnp.array([[OF, Pc]]) # interp point
+    for i in range(2):
+        ip = ip.at[:,i].set(jnp.minimum(jnp.maximum(ip[:,i], ig[i][0]), ig[i][-1]))
+    k = s['chem_interp_k'](ip)[0]
+    M = s['chem_interp_M'](ip)[0]
+    T = s['chem_interp_T'](ip)[0]
     # jax.debug.print('cmbr, k={a}, M={b}, T={c} from OF={d}, Pc={e}', a=k, b=M, c=T, d=OF, e=Pc)
     R = 8314.5 / M
     rho = Pc/(R * T)

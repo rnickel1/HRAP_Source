@@ -32,8 +32,6 @@ tnk = make_sat_tank(
     inj_CdA= 0.22 * (np.pi/4 * 0.5**2 * _in**2),
     m_ox=12.6, # TODO: init limit
     T = 294,
-    
-    # m_ox = 3.0,
 )
 # print('INJ TEST', 0.5 * (np.pi/4 * 0.5**2 * _in**2))
 
@@ -61,7 +59,7 @@ cmbr = make_chamber(
 
 noz = make_cd_nozzle(
     thrt = 1.75 * _in, # Throat diameter
-    ER = 5,         # Exit/throat area ratio
+    ER = 4.99,         # Exit/throat area ratio
     eff = 0.97,
     C_d = 0.995,
 )
@@ -108,7 +106,8 @@ fire_engine = core.make_integrator(
 T = 10.0
 # T = 10E-2
 print('run 1')
-t, x, xstack = fire_engine(s, x, dt=1E-2, T=T)
+t, x, xstack = fire_engine(s, x, dt=1E-3, T=T)
+jax.block_until_ready(xstack)
 # print('run 2')
 # TODO: new x0!
 # t, x, xstack = fire_engine(s, x, dt=1E-2, T=T)
