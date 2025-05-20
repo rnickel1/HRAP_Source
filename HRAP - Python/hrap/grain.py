@@ -21,8 +21,8 @@ def d_grain_constOF(s, x, xmap, fshape):
     # Current volume
     V = L * A
     
-    # Grain consumption rate
-    mdot = -mdot_inj / OF
+    # Grain consumption rate (positive)
+    mdot = mdot_inj / OF
     
     # Rate of volume consumption (positive)
     Vdot = mdot / rho
@@ -34,13 +34,13 @@ def d_grain_constOF(s, x, xmap, fshape):
     ddot = Adot / arc
     
     # Store result
-    x = store_x(x, xmap, grn_Adot=Adot, grn_ddot=ddot, grn_V=V, grn_mdot=mdot, grn_Vdot=Vdot, cmbr_OF=OF)
+    x = store_x(x, xmap, grn_Adot=-Adot, grn_ddot=ddot, grn_V=V, grn_mdot=mdot, grn_Vdot=Vdot, cmbr_OF=OF)
 
     return x
 
-def d_grain_fit(s, x, xmap, fshape):
-    # Get exposed area along the grain
-    A_burn = arc * L
+# def d_grain_fit(s, x, xmap, fshape):
+#     # Get exposed area along the grain
+#     A_burn = arc * L
 
 def u_grain(s, x, xmap):
     x = store_x(x, xmap,

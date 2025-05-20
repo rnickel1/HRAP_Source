@@ -7,13 +7,13 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-import core
-from tank    import *
-from grain   import *
-from chamber import *
-from nozzle  import *
-from sat_nos import *
-from units   import _in, _ft, _lbf
+import hrap.core as core
+from hrap.tank    import *
+from hrap.grain   import *
+from hrap.chamber import *
+from hrap.nozzle  import *
+from hrap.sat_nos import *
+from hrap.units   import _in, _ft, _lbf
 
 jax.config.update("jax_enable_x64", True)
 # np.random.seed(42)
@@ -45,20 +45,23 @@ grn = make_constOF_grain(
     OF = 3.5,
     OD = 4.5 * _in,
     L = 30.0 * _in,
+    rho = 1117.0,
+    A = np.pi/4 * (4.5**2 - 2.5**2) * _in**2, # TODO: need to automate init of this!
 )
 
 prepost_ID = 4.25*_in                              # Inner diameter of pre and post combustion chambers (m)
 prepost_V  = (3.5+1.7)*_in * np.pi/4*prepost_ID**2 # Empty volume of pre and post combustion chambers (m^3)
-rings_V    = 3 * (1/8*_in) * np.pi*(2.5 * _in)**2  # Empty volume of phenolic rings (m^3)
-fuel_V     = (30.0 * _in) * np.pi*(4.5 * _in)**2   # Empty volume of grain footprint (m^3)
+rings_V    = 3 * (1/8*_in) * np.pi*(2.5/2 * _in)**2  # Empty volume of phenolic rings (m^3)
+fuel_V     = (30.0 * _in) * np.pi*(4.5/2 * _in)**2   # Empty volume of grain footprint (m^3)
 cmbr = make_chamber(
     V0 =  prepost_V + rings_V + fuel_V,            # Volume of chamber w/o grain (m^3)
-    cstar_eff = 0.9,
+    cstar_eff = 1.0,#0.95
+    m_g = 101e3*29/8314/294 * (prepost_V + rings_V + fuel_V - (30.0 * _in) * np.pi*(2.5/2 * _in)**2), # p = rho R T
 )
 
 noz = make_cd_nozzle(
     thrt = 1.75 * _in, # Throat diameter
-    ER = 4.99,         # Exit/throat area ratio
+    ER = 5,         # Exit/throat area ratio
     eff = 0.97,
     C_d = 0.995,
 )
@@ -73,9 +76,11 @@ chem_Pc = chem[0].ravel()
 chem_k = chem[2]
 chem_M = chem[3]
 chem_T = chem[4]
-# print(chem_OF)
-# print(chem_Pc)
+print(chem_OF)
+print(chem_Pc)
 # print(chem_k)
+
+print(chem_k.shape, chem_OF.shape)
 
 # TODO: Make sure second arg arrays are right transposed
 from jax.scipy.interpolate import RegularGridInterpolator
@@ -100,8 +105,8 @@ fire_engine = core.make_integrator(
 )
 
 # Integrate the engine state
-# T = 1.0
-T = 10E-2
+T = 10.0
+# T = 10E-2
 print('run 1')
 t, x, xstack = fire_engine(s, x, dt=1E-2, T=T)
 # print('run 2')
@@ -117,18 +122,18 @@ tnk, grn, cmbr, noz = core.unpack_engine(s, xstack, method)
 # print('grn', grn.keys())
 # print('cmbr', cmbr.keys())
 # print('noz', noz.keys())
-print()
-print('Post-run arrays:')
-for name, obj in (('tnk', tnk), ('grn', grn), ('cmbr', cmbr), ('noz', noz)):
-    print(name+':')
-    for key, val in obj.items():
-        print(key+':', val)
-    print()
+# print()
+# print('Post-run arrays:')
+# for name, obj in (('tnk', tnk), ('grn', grn), ('cmbr', cmbr), ('noz', noz)):
+#     print(name+':')
+#     for key, val in obj.items():
+#         print(key+':', val)
+#     print()
 
 
 
 # Visualization
-fig, axs = plt.subplots(nrows=2, ncols=3, figsize=(12,7))
+fig, axs = plt.subplots(nrows=3, ncols=3, figsize=(12,7))
 axs = np.array(axs).ravel()
 
 # Plot thrust
@@ -139,20 +144,48 @@ axs[0].set_title('Thrust')
 axs[1].plot(np.linspace(0.0, T, N_t), tnk['mdot_ox'], label='mdot_ox')
 axs[1].plot(np.linspace(0.0, T, N_t), tnk['mdot_inj'], label='mdot_inj')
 axs[1].plot(np.linspace(0.0, T, N_t), tnk['mdot_vnt'], label='mdot_vnt')
-axs[1].legend()
+axs[1].plot(np.linspace(0.0, T, N_t), grn['mdot'], label='mdot_grn')
+axs[1].plot(np.linspace(0.0, T, N_t), noz['mdot'], label='mdot_noz')
+axs[1].plot(np.linspace(0.0, T, N_t), cmbr['mdot_g'], label='mdot_cmbr')
+axs[1].legend(loc='upper right')
+axs[1].set_title('mdot')
 
-axs[1].set_title('mdot_ox')
-
-axs[2].plot(np.linspace(0.0, T, N_t), tnk['P'] - cmbr['P'])
-axs[2].set_title('Ptank - Pchamber')
+axs[2].plot(np.linspace(0.0, T, N_t), cmbr['P'], label='chamber')
+axs[2].plot(np.linspace(0.0, T, N_t), tnk['P'], label='tank')
+axs[2].plot(np.linspace(0.0, T, N_t), noz['Pe'], label='noz exit')
+axs[2].legend(loc='upper right')
+axs[2].set_title('P')
 
 axs[3].plot(np.linspace(0.0, T, N_t), tnk['T'])
 axs[3].set_title('T tank')
 
-axs[4].plot(np.linspace(0.0, T, N_t), tnk['m_ox_liq'])
-axs[4].plot(np.linspace(0.0, T, N_t), tnk['m_ox_vap'])
-axs[4].set_title('m tank')
+axs[4].plot(np.linspace(0.0, T, N_t), tnk['m_ox_liq'], label='ox liq')
+axs[4].plot(np.linspace(0.0, T, N_t), tnk['m_ox_vap'], label='ox vap')
+axs[4].plot(np.linspace(0.0, T, N_t), cmbr['m_g'], label='cmbr stored')
+axs[4].plot(np.linspace(0.0, T, N_t), grn['V']*grn['rho'], label='grain')
+axs[4].legend()
+axs[4].set_title('m')
 
+D = (4.5 - 2.5)*_in
+axs[5].plot([0.0, T], [D]*2, label='grain thickness')
+axs[5].plot(np.linspace(0.0, T, N_t), grn['d'], label='net regression')
+# axs[5].plot(np.linspace(0.0, T, N_t), grn['V'], label='grain volume')
+axs[5].legend()
+
+axs[6].plot(np.linspace(0.0, T, N_t), noz['Me'], label='Mach exit')
+# axs[5].plot(np.linspace(0.0, T, N_t), grn['V'], label='grain volume')
+axs[6].legend()
+
+# axs[7].plot(np.linspace(0.0, T, N_t), cmbr['V0'] - 0*grn['V'], label='cmbr V0')
+# axs[7].plot(np.linspace(0.0, T, N_t), grn['V'], label='grain V')
+axs[7].plot(np.linspace(0.0, T, N_t), cmbr['cstar'], label='cstar')
+axs[7].plot(np.linspace(0.0, T, N_t), cmbr['T'], label='cmbr T')
+# axs[7].plot(np.linspace(0.0, T, N_t), cmbr['V0'] - grn['V'], label='Empty cmbr V')
+# axs[5].plot(np.linspace(0.0, T, N_t), grn['V'], label='grain volume')
+axs[7].legend()
+
+axs[8].plot(np.linspace(0.0, T, N_t), cmbr['k'], label='cmbr k')
+axs[8].legend()
 
 
 # Write thrust validation, big hybrid 7-26-23

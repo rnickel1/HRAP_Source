@@ -58,6 +58,7 @@ def sat_vap_blowdown(T, m_ox, mdot_ox, ox, dP_dT, get_sat_props):
         return eps, Z_new, Z_1, T_new, T_1, m_2__m_1
     
     res = jax.lax.while_loop(lambda val: jnp.abs(val[0]) > 1E-9, Z_body, (1.0, ox['Z'], ox['Z'], T, T, m_2__m_1))
+    # jax.debug.print('{a}', a=res[0])
     T_2 = res[3]
     
     Tdot = (T_2 - T) / delta
@@ -119,20 +120,34 @@ def d_sat_tank(s, x, xmap, get_sat_props):
     )
     
     # Get injected vapor or liquid oxidizer mass flow rate
-    
+    # mdot_inj = cond(
+    #     m_liq <= 1E-3,
+    #     lambda m_vap, inj_CdA, inj_N, T, Z, Mcc, rho_l, dP: cond(
+    #         m_vap <= 0.0,
+    #         lambda *vargs:
+    #             0.0,
+    #         lambda inj_CdA, inj_N, T, Z, Mcc, dP:
+    #             (inj_CdA*inj_N*Pt/jnp.sqrt(T))*jnp.sqrt(1.31/(Z*188.91))*Mcc*(1+(0.31)/2*Mcc**2)**(-2.31/0.62),
+    #         inj_CdA, inj_N, T, ox['Z'], Mcc, dP
+    #     ),
+    #     lambda m_vap, inj_CdA, inj_N, T, Z, Mcc, rho_l, dP:
+    #         inj_CdA*inj_N*jnp.sqrt(2*rho_l*dP),
+    #     m_vap, inj_CdA, inj_N, T, ox['Z'], Mcc, rho_l, dP
+    # )
     mdot_inj = cond(
         m_liq <= 1E-3,
-        lambda m_vap, inj_CdA, inj_N, T, Z, Mcc, rho_l, dP: cond(
+        lambda m_vap, inj_CdA, inj_N, T, Z, Mcc, rho_l, rho_v, dP: cond(
             m_vap <= 0.0,
             lambda *vargs:
                 0.0,
-            lambda inj_CdA, inj_N, T, Z, Mcc, dP:
-                (inj_CdA*inj_N*Pt/jnp.sqrt(T))*jnp.sqrt(1.31/(Z*188.91))*Mcc*(1+(0.31)/2*Mcc**2)**(-2.31/0.62),
-            inj_CdA, inj_N, T, ox['Z'], Mcc, dP
+            lambda inj_CdA, inj_N, T, Z, Mcc, dP, rho_v:
+                inj_CdA*inj_N*jnp.sqrt(2*rho_v*dP),
+                # (inj_CdA*inj_N*Pt/jnp.sqrt(T))*jnp.sqrt(1.31/(Z*188.91))*Mcc*(1+(0.31)/2*Mcc**2)**(-2.31/0.62),
+            inj_CdA, inj_N, T, ox['Z'], Mcc, dP, rho_v
         ),
-        lambda m_vap, inj_CdA, inj_N, T, Z, Mcc, rho_l, dP:
+        lambda m_vap, inj_CdA, inj_N, T, Z, Mcc, rho_l, rho_v, dP:
             inj_CdA*inj_N*jnp.sqrt(2*rho_l*dP),
-        m_vap, inj_CdA, inj_N, T, ox['Z'], Mcc, rho_l, dP
+        m_vap, inj_CdA, inj_N, T, ox['Z'], Mcc, rho_l, rho_v, dP
     )
     # jax.debug.print("INJ Debug {a} {b} {x} {y} {c} {d} {e} {f}", a=m_liq, b=m_vap, x=Pt, y=T, c=ox['Z'], d=Mcc, e=mdot_inj, f=(inj_CdA*inj_N*Pt/jnp.sqrt(T))*jnp.sqrt(1.31/(ox['Z']*188.91))*Mcc*(1+(0.31)/2*Mcc**2)**(-2.31/0.62))
     
@@ -199,12 +214,11 @@ def make_sat_tank(get_sat_props, **kwargs):
         x = {
             'T':   293.0,
             'm_ox': 1.0,
+            
+            # Calculated variables
             'Pdot': 0.0,
             'mdot_inj': 0.0,
             'mdot_vnt': 0.0,
-            
-            
-            # Calculated variables
             'P':   101e3,
             'm_ox_liq': 0.0,
             'm_ox_vap': 0.0,

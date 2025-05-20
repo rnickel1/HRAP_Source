@@ -1,5 +1,6 @@
 from hrap.core import store_x, make_part
 
+import jax
 import jax.numpy as jnp
 from jax.lax import cond
 
@@ -17,7 +18,7 @@ def d_chamber(s, x, xmap):
     OF       = x[xmap['cmbr_OF']] # O/F ratio, set by grain file
 
     # Chamber stored mass derivative
-    mdot_g = -grn_mdot + inj_mdot - noz_mdot
+    mdot_g = grn_mdot + inj_mdot - noz_mdot
     mdot_g = cond((m_g <= 0.0) & (mdot_g < 0.0), lambda val: 0.0, lambda val: val, mdot_g)
 
     # Chamber pressure derivative
@@ -25,16 +26,20 @@ def d_chamber(s, x, xmap):
     Pdot = cond(((Pc <= s['Pa']) & (Pdot < 0.0)) | (m_g <= 0.0), lambda val: 0.0, lambda val: val, Pdot)
     
     # Get chamber properties and update cstar
+    # interp_point = jnp.array([[OF, Pc]])
+    # TODO: Need an error if out of bounds?
+    # _Pc = jnp.maximum()
     interp_point = jnp.array([[OF, Pc]])
     k = s['chem_interp_k'](interp_point)[0]
     M = s['chem_interp_M'](interp_point)[0]
     T = s['chem_interp_T'](interp_point)[0]
+    # jax.debug.print('cmbr, k={a}, M={b}, T={c} from OF={d}, Pc={e}', a=k, b=M, c=T, d=OF, e=Pc)
     R = 8314.5 / M
     rho = Pc/(R * T)
     cstar = s['cmbr_cstar_eff']*jnp.sqrt((R*T)/(k*(2/(k+1))**((k+1)/(k-1))))
     
     # Store derivatives
-    x = store_x(x, xmap, cmbr_mdot_g=mdot_g, cmbr_Pdot=Pdot, cmbr_k=k, cmbr_cstar=cstar)
+    x = store_x(x, xmap, cmbr_mdot_g=mdot_g, cmbr_Pdot=Pdot, cmbr_k=k, cmbr_T=T, cmbr_cstar=cstar)
 
     return x
 
@@ -75,6 +80,7 @@ def make_chamber(**kwargs):
             
             # Calculated variables
             'k': 0.0,
+            'T': 0.0,
             'cstar': 0.0,
             'OF': 0.0, # Handled by grain file
         },

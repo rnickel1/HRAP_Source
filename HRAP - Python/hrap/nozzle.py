@@ -10,7 +10,7 @@ from functools import partial
 
 # Solve for exit mach given specific heat ratio and exit ratio
 def M_solve(k, ER):
-    def get_error(Me, k):
+    def get_error(Me, k, ER):
         error = ((k+1)/2)**(-(k+1)/ \
             (2*(k-1)))*(1+(k-1)/2*Me**2)** \
             ((k+1)/(2*(k-1)))/Me- \
@@ -23,39 +23,40 @@ def M_solve(k, ER):
     def body(val):
         _, Me, k, ER, i = val
         
-        error = get_error(Me, k)
-        Me -= error / get_derror_dMe(Me, k)
+        error = get_error(Me, k, ER)
+        Me -= error / get_derror_dMe(Me, k, ER)
+        # error = get_error(Me, k, ER)
 
         return (error, Me, k, ER, i+1)
 
     res = jax.lax.while_loop(lambda val: (jnp.abs(val[0]) > 1E-8) & (val[4]<10), body, (1.0, 3.0, k, ER, 0))
-    jax.debug.print('final error {a}, Me={c}, iter={b}', a=res[0], c=res[1], b=res[4])
+    # jax.debug.print('final error {a}, Me={c}, iter={b}', a=get_error(res[1], k, ER), c=res[1], b=res[4])
     
     return res[1]
 
 def d_cd_nozzle(s, x, xmap):
-    Pt     = x[xmap['cmbr_P']]          # Chamber pressure
+    Pc     = x[xmap['cmbr_P']]          # Chamber pressure
     Pa     = s['Pa']                    # Atmosphere pressure
     k      = x[xmap['cmbr_k']]          # Specific heat ratio
     A_thrt = np.pi/4 * s['noz_thrt']**2 # Nozzle throat area
     
     # Nozzle mass flow rate
-    mdot = cond(Pt <= Pa, lambda v: 0.0, lambda v: v, Pt*s['noz_Cd'] * A_thrt/x[xmap['cmbr_cstar']])
+    mdot = cond(Pc <= Pa, lambda v: 0.0, lambda v: v, Pc*s['noz_Cd'] * A_thrt/x[xmap['cmbr_cstar']])
     
     # Exit Mach
     Me = M_solve(k, s['noz_ER'])
 
     # Exit pressure
-    Pe = Pt*(1+0.5*(k-1)*Me**2)**(-k/(k-1))
+    Pe = Pc*(1+0.5*(k-1)*Me**2)**(-k/(k-1))
     
     #
     Cf = jnp.sqrt(((2*k**2)/(k-1))*(2/(k+1))**((k+1)/ \
-        (k-1))*(1-(Pe/Pt)**((k-1)/k)))+ \
+        (k-1))*(1-(Pe/Pc)**((k-1)/k)))+ \
         ((Pe-Pa)*(A_thrt*s['noz_ER']))/ \
-        (Pt*A_thrt)
+        (Pc*A_thrt)
     
     # Thrust
-    thrust = s['noz_eff']*Cf*A_thrt*Pt*s['noz_Cd']
+    thrust = s['noz_eff']*Cf*A_thrt*Pc*s['noz_Cd']
 
     # Store state
     x = store_x(x, xmap, noz_mdot=mdot, noz_Me=Me, noz_Pe=Pe, noz_thrust=thrust)
