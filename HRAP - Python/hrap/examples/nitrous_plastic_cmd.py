@@ -7,6 +7,8 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
+import cantera as ct
+
 import hrap.core as core
 from hrap.tank    import *
 from hrap.grain   import *
@@ -18,12 +20,44 @@ from hrap.units   import _in, _ft, _lbf
 jax.config.update("jax_enable_x64", True)
 # np.random.seed(42)
 
+
+
+# PVC Plastisol in Cantera format
+plastisol_yaml = """
+species:
+- name: Plastisol-362
+  composition:
+    C: 7.200
+    H: 10.82
+    O: 1.14
+    Cl: 0.669
+  thermo:
+    model: constant-cp
+    T0: 298.15 # K
+    h0: -265.35755 # kJ/mol
+    s0: 0.0 # J/mol-K
 """
-numpy
-scipy
-jax
-dearpygui
-"""
+
+# gas = ct.Solution('nasa_gas.yaml')
+gas = ct.Solution(thermo="ideal-gas", species=ct.Species.list_from_file("nasa_gas.yaml"))
+
+# mix = ct.Mixture([gas])
+
+# mix.set_mole_fractions({'CH4_cond': 0.5, 'C2H6_cond': 0.5}) # Example: 50/50 mix of condensed fuels
+# takes kg fuel / kg mix, fuel, oxidizer (units for latter 2 from basis)
+gas.set_mixture_fraction(1/3.5, 'H2', 'N2O', basis='mole')
+# gas.set_mixture_fraction(1/3.5, 'Plastisol-362', 'N2O', basis='mole')
+gas.TP = 298.0, ct.one_atm * 10
+# gas.T = 298.0  # Kelvin
+# gas.P = ct.one_atm * 10 # Pascals
+
+gas.equilibrate('HP')
+
+# TODO: plot equivalence ratio for fun?
+
+print(f"Equilibrium Temperature: {gas.T:.2f} K")
+
+
 
 # Initialization
 tnk = make_sat_tank(
