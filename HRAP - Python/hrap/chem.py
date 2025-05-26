@@ -1,6 +1,10 @@
+# Author: Thomas A. Scott, https://www.scott-aero.com/
+
 # HP Gibb's free energy minimization (specified input enthalpy and pressure)
 # Note: RPA, CEA, PROPEP all use the same algorithm
-# Why? Because pypropep is abandoned, pycea requires uses to install Fortran, and Cantera's equilibrium solver has been broken for over a decade. That is, there are no suitable Python alternatives.
+# Why make this? Because pypropep is broken and abandoned, pycea requires uses to install Fortran, and Cantera's equilibrium solver has been broken for over a decade. That is, there are no suitable Python alternatives.
+
+# Condensed species are mostly implemented but disabled as the procedure of solving for gas only before adding condensed to solve coupled proved necessary
 
 # PORTING AND UNIT TESTS ARE WIP!
 
@@ -38,44 +42,44 @@
 
 Rhat = 8314 # J/(K*kmol), universal gas constant
 
-@partial(jax.tree_util.register_dataclass,
-    data_fields=[],
-    meta_fields=[])
+# @partial(jax.tree_util.register_dataclass,
+#     data_fields=[],
+#     meta_fields=[])
 @dataclass
 class NASA9(object):
     T_min: float # K
     T_max: float # K
-    # TODO: double check consistent with curve
+    # TODO: check consistent with curve
     dho: float # Formation enthalpy
     coeffs: list[float] # 9 coefficients
     
     # Nondimensionalized as Cp/Rhat
     def get_Cp_D(self, T):
-        return self.coeffs[0]/(T*T)      + self.coeffs[1]/T   + self.coeffs[2]      +
-               self.coeffs[3]*T          + self.coeffs[4]*T*T + self.coeffs[5]*T**2 +
+        return self.coeffs[0]/(T*T) + self.coeffs[1]/T   + self.coeffs[2]      +
+               self.coeffs[3]*T     + self.coeffs[4]*T*T + self.coeffs[5]*T**2 +
                self.coeffs[6]*T**4
     
     # Nondimensionalized as H/(Rhat*T)
     def get_H_D(self, T):
-         return -self.coeffs[0]/(T*T)          + self.coeffs[1]/T*jnp.log(T) + self.coeffs[2]      +
-                 self.coeffs[3]*T/2.0          + self.coeffs[4]*T*T/3.0  + self.coeffs[5]*T**3/4.0 +
+         return -self.coeffs[0]/(T*T)    + self.coeffs[1]/T*jnp.log(T) + self.coeffs[2]          +
+                 self.coeffs[3]*T/2.0    + self.coeffs[4]*T*T/3.0      + self.coeffs[5]*T**3/4.0 +
                  self.coeffs[6]*T**4/5.0 + self.coeffs[7]/T
 
     # Nondimensionalized as S/Rhat
     def get_S_D(self, T):
-        return -self.coeffs[0]/(2.0*T*T)      - self.coeffs[1]/T       + self.coeffs[2]*jnp.log(T) +
-                self.coeffs[3]*T              + self.coeffs[4]*T*T/2.0 + self.coeffs[5]*T**3/3.0   +
-                self.coeffs[6]*T**4/4.0 + self.coeffs[8]
+        return -self.coeffs[0]/(2.0*T*T) - self.coeffs[1]/T       + self.coeffs[2]*jnp.log(T) +
+                self.coeffs[3]*T         + self.coeffs[4]*T*T/2.0 + self.coeffs[5]*T**3/3.0   +
+                self.coeffs[6]*T**4/4.0  + self.coeffs[8]
 
-@partial(jax.tree_util.register_dataclass,
-    data_fields=[],
-    meta_fields=[])
+# @partial(jax.tree_util.register_dataclass,
+#     data_fields=[],
+#     meta_fields=[])
 @dataclass
 class ThermoSubstance(object):
     formula: str # Format should be similar to "(HCOOH)2-", all capitals
     comment: str # Such as data origin
     condensed: bool # Either condensed or gaseous
-    isProduct: bool # Always a reactant, not always a product
+    is_product: bool # Always a reactant, not always a product
     composition: Dict[str, float] # two-letter code: relative moles i.e. chemical composition
     M: float # kg/kmol, molar mass
     providers: list[NASA9]
@@ -85,15 +89,27 @@ class ThermoSubstance(object):
     def get_R(self): # J/(K*kg)
         return Rhat / self.M
     
+    def get_prov(self, T):
+        i = 0
+        for j in range(1, len(providers)):
+            if T > providers[j].T_min: i = j
+        
+        return providers[i]
+
     def get_Cp_D(self, T):
+        return self.get_prov(T).get_Cp_D(T)
     
     def get_H_D(self, T):
+        return self.get_prov(T).get_H_D(T)
         
     def get_S_D(self, T):
+        return self.get_prov(T).get_S_D(T)
 
 @dataclass
 class ChemSolver:
     substances: list[ThermoSubstance]
+
+    # TODO: remove std from comments
     
     # Takes in table such as thermo.ipa from RPA or thermo.dat from cpropep. Must be text, not binary
     # Must end with END REACTANTS and contain END PRODUCTS
@@ -203,773 +219,363 @@ class ChemSolver:
                 
                 line = chem_file.readline()
 
-    #void Supply(ThermochemicalSubstance *substance, double m_frac, double T, double P); # mass fraction, T(K), P(Pa)
-    # Result Solve(double P, int iterations, bool returnComposition = false); # P(Pa)
+    #void Supply(ThermochemicalSubstance *substance, m_frac, T, P); # mass fraction, T(K), P(Pa)
+    # Result Solve(P, int iterations, bool returnComposition = false); # P(Pa)
 
     # TODO: Take out of functions if it works with only correct var derivatives
     # k is each relevant element
-    def ReducedEQ0k(self, k):
-        double result = -iter.b_i0[k]; # -b_k0
-        for (const std::pair<int, double> &ja : relatedGasousSubstances[k]) {
-            double a_kj_n_j = ja.second * iter.n_j[ja.first]; # a_kj*n_j
-            for (auto &elem_i : substances[ja.first]->composition) # sum across i, a_kj*a_ij*n_j*pi_i
-                result += a_kj_n_j*elem_i.second*iter.pi_i[reverseElements[elem_i.first]];
-            result += a_kj_n_j*iter.Deltaln_n; # a_kj*n_j*Deltaln_n
-            double H_D_j = substances[ja.first]->GetH_D(iter.T); # H_jstd/(R*T)
-            result += a_kj_n_j*H_D_j*iter.Deltaln_T; # a_kj*n_j*H_jstd/(R*T)*Deltaln_T
-            # TODO: Double check Gibb's formula!
-            result -= a_kj_n_j*(H_D_j-substances[ja.first]->GetS_D(iter.T)+log(iter.n_j[ja.first]/iter.n)+log(iter.P/1.0E5)); # a_kj*n_j*mu_j/(R*T)
-            result += a_kj_n_j; # b_k contribution, a_kj*n_j
-        }
-        for (const std::pair<int, double> &ja : relatedCondensedSubstances[k]) { # sum across condensed, a_kj*Deltan_j
-            result += ja.second + iter.Deltan_j[ja.first-gaseousSubstanceCount];
-            # b_k contribution
-            result += ja.second * iter.n_j[ja.first]; # b_k contribution, a_kj*n_j
-        }
+    def ReducedEQ0k(self, k, x):
+        result = -x.b_i0[k] # -b_k0
 
-        return result;
+        a_kj_n_j = x.gas_prod_a[k] * x.n_j[x.gas_prod_I[k]] # a_kj*n_j
+        for j in x.gas_prod_I[k]: # All substances containing this element
+            result += np.sum(a_kj_n_j[j] * subs_a[j] * x.pi_i[subs_I[j]]) # Sum across all elements in the substance, a_kj*a_ij*n_j*pi_i
+            result += a_kj_n_j*x.Deltaln_n # a_kj*n_j*Deltaln_n
+            H_D_j, S_D_j = x.subs[j].get_H_D(x.T), x.subs[j].get_S_D(x.T) # H_j/(R*T)
+            result += a_kj_n_j*H_D_j*x.Deltaln_T # a_kj*n_j*H_j/(R*T)*Deltaln_T
+            # TODO: check Gibb's formula!
+            result -= a_kj_n_j*(H_D_j-S_D_j+np.log(x.n_j[j]/x.n)+np.log(x.P/1.0E5)) # a_kj*n_j*mu_j/(R*T)
+            result += a_kj_n_j # b_k contribution, a_kj*n_j
 
-    # # j is each condensed species (starting at j=gaseousSubstanceCount)
-    # double ThermochemicalSolverGibbsMinHP::ReducedEQ1j(int j) {
-        # # TODO: How is Gibb's treated for condensed???
-        # # H_jstd/(R*T)*Deltaln_T-mu_j/(R*T)
-        # double result = substances[j]->GetH_D(iter.T)*iter.Deltaln_T-(substances[j]->GetH_D(iter.T)-substances[j]->GetS_D(iter.T));
-        # for (auto &elem_i : substances[j]->composition) # sum across i, a_ij*pi_i
-            # result += elem_i.second*iter.pi_i[reverseElements[elem_i.first]];
+        # sum across condensed, a_kj*Deltan_j
+        result += np.sum(x.cond_prod_a[k] + x.Deltan_j[x.cond_prod_I[k] - x.N_gas])
+        result += x.cond_prod_a[k] * x.n_j[x.cond_prod_I[k]] # b_k contribution, a_kj*n_j
 
-        # return result;
-    # }
+        return result
 
-    # double ThermochemicalSolverGibbsMinHP::ReducedEQ2() {
-        # double result = -iter.n - iter.n*iter.Deltaln_n;
-        # for (int j = 0; j < gaseousSubstanceCount; ++j) {
-            # for (auto &elem_i : substances[j]->composition) { # sum across i, a_ij*n_j*pi_i
-                # result += elem_i.second*iter.n_j[j]*iter.pi_i[reverseElements[elem_i.first]];
-                # #std::cerr << "elem " << elem_i.first << " " << iter.pi_i[reverseElements[elem_i.first]] << std::endl;
-            # }
-            # # TODO: SUS
-            # #result += (iter.n_j[j] - iter.n) * iter.Deltaln_n; # (n_j-n)*Deltaln_n
-            # result += iter.n_j[j] * iter.Deltaln_n; # (n_j-n)*Deltaln_n
-            # double H_D_j = substances[j]->GetH_D(iter.T); # H_jstd/(R*T)
-            # result += iter.n_j[j]*H_D_j*iter.Deltaln_T; # n_j*H_jstd/(R*T)*Deltaln_T
-            # result += iter.n_j[j]; # n_j
-            # result -= iter.n_j[j]*(H_D_j-substances[j]->GetS_D(iter.T)+log(iter.n_j[j]/iter.n)+log(iter.P/1.0E5)); # n_j*mu_j/(R*T)
-            # #std::cerr << "substance " << j << " " << iter.n_j[j] << " " << H_D_j << " " << substances[j]->GetS_D(iter.T) << " " << iter.n << " " << iter.Deltaln_n << " " << iter.Deltaln_T << std::endl;
-        # }
+    # j is each condensed species (starting at j=gaseousSubstanceCount)
+    def ReducedEQ1j(self, j, x):
+        # TODO: How is Gibb's treated for condensed???
+        # H_jstd/(R*T)*Deltaln_T-mu_j/(R*T)
+        result = x.subs[j].get_H_D(x.T)*x.Deltaln_T-(x.subs[j].get_H_D(x.T)-x.subs[j].get_S_D(x.T))
+        result += np.sum(subs_a[j] * x.pi_i[subs_I[j]]) # sum across elements, a_ij*pi_i
 
-        # return result;
-    # }
+        return result
 
-    # double ThermochemicalSolverGibbsMinHP::ReducedEQ3() {
-        # double result = -iter.h_0/(Universal::R*iter.T); # h_0/R*T
+    def ReducedEQ2(self, x):
+        result = -x.n - x.n*x.Deltaln_n
+        for j in range(x.N_gas):
+            result += np.sum(x.subs_a[j] * x.n_j[j] * x.pi_i[x.subs_I[j]]) # sum across i, a_ij*n_j*pi_i
+            # TODO: SUS
+            #result += (iter.n_j[j] - iter.n) * iter.Deltaln_n; # (n_j-n)*Deltaln_n
+            result += x.n_j[j] * x.Deltaln_n; # (n_j-n)*Deltaln_n
+            H_D_j, S_D_j = x.subs[j].get_H_D(x.T), x.subs[j].get_S_D(x.T) # H_j/(R*T)
+            result += x.n_j[j]*H_D_j*x.Deltaln_T; # n_j*H_jstd/(R*T)*Deltaln_T
+            result += x.n_j[j]; # n_j
+            result -= x.n_j[j]*(H_D_j-S_D_j+np.log(x.n_j[j]/x.n)+np.log(x.P/1.0E5)); # n_j*mu_j/(R*T)
+
+        return result
+
+    def ReducedEQ3(self, x):
+        result = -x.h_0/(Rhat*x.T) # h_0/R*T
         
-        # for (int j = 0; j < gaseousSubstanceCount; ++j) {
-            # double H_D_j = substances[j]->GetH_D(iter.T); # H_jstd/(R*T)
-            # for (auto &elem_i : substances[j]->composition) # sum across i, a_ij*n_j*H_jstd/(R*T)*pi_i
-                # result += elem_i.second*iter.n_j[j]*H_D_j*iter.pi_i[reverseElements[elem_i.first]];
-            # result += iter.n_j[j] * H_D_j * iter.Deltaln_n; # n_j*H_jstd/(R*T)*Deltaln_n
-            # result += iter.n_j[j] * H_D_j; # h/(R*T) contribution, n_j*H_jstd/(R*T)
-            # result += iter.n_j[j]*(substances[j]->GetCp_D(iter.T)+H_D_j*H_D_j)*iter.Deltaln_T; # (n_j*Cp_jstd/R+n_j*H_jstd^2/(R^2*T^2))*Deltaln_T
-            # result -= iter.n_j[j]*H_D_j*(H_D_j-substances[j]->GetS_D(iter.T)+log(iter.n_j[j]/iter.n)+log(iter.P/1.0E5)); # n_j*H_jstd*mu_j/(R^2*T^2)
-            # #std::cerr << "lasteq,for,in: " << j << ", " << H_D_j << " " << iter.n_j[j] << std::endl;
-        # }
-        # #std::cerr << "lasteq,gas: " << result << std::endl;
-        # for (int j = gaseousSubstanceCount; j < substances.size(); ++j) {
-            # double H_D_j = substances[j]->GetH_D(iter.T);
-            # result += H_D_j*iter.Deltan_j[j-gaseousSubstanceCount]; # H_jstd/(R*T)*Deltan_j
-            # result += iter.n_j[j] * H_D_j; # h/(R*T) contribution
-        # }
+        # TODO: could get rid of several loops by computing H, S, C_p ahead of time
+        for j in range(x.N_gas):
+            Cp_D, H_D_j, S_D_j = x.subs[j].GetCp_D(x.T), x.subs[j].get_H_D(x.T), x.subs[j].get_S_D(x.T) # H_j/(R*T)
+            results += np.sum(x.subs_a[j] * x.n_j[j] * H_D_j * x.pi_i[x.subs_I]) # sum across i, a_ij*n_j*H_jstd/(R*T)*pi_i
+            result += x.n_j[j] * H_D_j * x.Deltaln_n; # n_j*H_jstd/(R*T)*Deltaln_n
+            result += x.n_j[j] * H_D_j; # h/(R*T) contribution, n_j*H_jstd/(R*T)
+            result += x.n_j[j]*(Cp_D+H_D_j*H_D_j)*x.Deltaln_T; # (n_j*Cp_jstd/R+n_j*H_jstd^2/(R^2*T^2))*Deltaln_T
+            result -= x.n_j[j]*H_D_j*(H_D_j-S_D_j+np.log(x.n_j[j]/x.n)+np.log(x.P/1.0E5)); # n_j*H_jstd*mu_j/(R^2*T^2)
+        
+        for j in range(x.N_gas, x.N_sub):
+            H_D_j = x.subs[j].get_H_D(x.T) # H_j/(R*T)
+            result += H_D_j*x.Deltan_j[j-x.N_gas]; # H_jstd/(R*T)*Deltan_j
+            result += x.n_j[j] * H_D_j; # h/(R*T) contribution
 
-        # return result;
-    # }
+        return result
+
+    @dataclass
+    class InternalState(objects):
+        present_elements: list[str]
+        N_elem: int
+        N_sub: int
+        N_gas: int
+        N_cond: int
+
+        P: float # Pa, constant pressure
+        h_0: float # input enthalpy
+        n: float
+        T: float # K, current temperature
+        Deltaln_n: float
+        Deltaln_T: float
+
+        # cond_subs: np.ndarray
+        b_i0: np.ndarray # used to keep the elemental mass density balance identical to the inputs
+        b_i0_max: float # (N_elem)
+        pi_i: np.ndarray
+        n_j: np.ndarray # (N_subs)
+        Deltan_j: np.ndarray # (N_cond)
+        Deltan_j_gas: np.ndarray # (N_gas)
+
+        subs: list[ThermochemicalSubstance] # N_subs
+        subs_I: list[np.ndarray] # N_subs array containing local element indices
+        subs_a: list[np.ndarray] # Corresponding amount of the element
+
+        gas_prod_I: list[np.ndarray] # N_elem arrays containing local substance indices
+        gas_prod_a: list[np.ndarray] # corresponding amount of the element in the substance
+
+        cond_prod_I: list[np.ndarray] # N_elem arrays containing local substance indices
+        cond_prod_a: list[np.ndarray] # corresponding amount of the element in the substance
+    
+    @dataclass
+    class Result:
+        T: float # K
+        # Important: these are actual Cp, Cv, gamma; NOT FOZEN
+        #   i.e. they account for changing chemical composiRtion w.r.t. pressure and density, respectively
+        Cp: float
+        Cv: float
+        gamma: float # Specific heat ratio
+        # Frozen specific heat ratio aka isentropic exponent
+        #   used for speed of sound and anything else happening on a much smaller time scale than chemistry
+        gamma_s: float
+        M: float # kg/kmol
+        R: float
+        valid: bool # No errors and has any inputs
+        iters: int
+        composition: dict # Composition by (component formula, molar fraction)
 
     # supply is a dict like {formula: (mass fraction, T in, P in)}
-    def solve(self, Pc, supply, max_iters=200, return_composition=False, internal_state=None):
+    def solve(self, Pc, supply, max_iters=200, internal_state=None, reinit=True):
         # Basic input checks
         if supply.empty() or Pc <= 0.0:
             return Result(False), None
         
-        # Initialize from supply
-        h_0 = 0.0
+        # Electrons always included so that ions are possible to form
+        present_elements = ['E']
         for formula, inputs in supply:
             substance = self.substances[formula]
-            m_frac, T, P = inputs
-            n_j = m_frac/substance.M
-            h_0 += n_j * substance.get_H_D(T) * Rhat * T
             for elem, amount in substance.composition:
-                # b_i0 is used to keep the elemental mass density balance identical to the inputs
-                iter.b_i0[reverseElements[elem.first]] += amount * n_j
-        b_i0_max = np.max(b_i0)
+                if not elem in present_elements:
+                    present_elements.append(elem)
+        present_elements = sorted(present_elements)
 
-        N_e, N_gas, N_cond, N_sub = len(self.elements)
-        
-        iter = 0
-        while iter < max_iters:
-            # equation 0, per element
-            for k in range(N_e):
-                iter.funcEvals[k] = ReducedEQ0k(k)
-            # equation 1, per condensed product
-            for j in range(condensedSubstanceCount):
-                iter.funcEvals[j + N_e] = ReducedEQ1j(j + N_gas)
-            iter.funcEvals[N_e + condensedSubstanceCount]     = ReducedEQ2()
-            iter.funcEvals[N_e + condensedSubstanceCount + 1] = ReducedEQ3()
+        x = internal_state
+        if x != None: # Check that provided internal_state is usable
+            if present_elements != x.present_elements:
+                print('Warning: provided internal state is not usable due to differing elemental composition, rebuilding...')
+                x = None
+        if x == None:
+            x = InternalState(present_elements)
+            x.N_elem = len(present_elements)
+            x.gas_prod_I, x.gas_prod_a, x.cond_prod_I, x.cond_prod_a = [[[] for i in range(x.N_elem)] for i in range(4)]
             
-            jac = np.zeros(N, N)
-            for k in range(Ne):
-                for (const std::pair<int, double>& ja : relatedGasousSubstances[k]) {
+            gas, cond = [], []
+            for sub in self.substances: if sub.is_product:
+                # TODO: temp cutoff too like SSTS?
+                if not sub.condensed and all([elem in present_elements for elem, _ in sub.composition]):
+                    gas.append(sub)
+            x.subs = gas + cond
+            x.N_sub, x.N_gas, x.N_cond = len(x.subs), len(gas), len(cond)
+
+            x.subs_I, x.subs_a = [], []
+            for i, sub in enumerate(x.subs):
+                sub_I, sub_a = [], []
+                for elem, amount in sub.composition:
+                    j = present_elements.index(elem)
+                    if i < x.N_gas:
+                        x.gas_prod_I[j].append(i)
+                        x.gas_prod_a[j].append(amount)
+                    else:
+                        x.cond_prod_I[j].append(i)
+                        x.cond_prod_a[j].append(amount)
+                    sub_I.append(j)
+                    sub_a.append(amount)
+
+                x.subs_I.append(np.array(sub_I, dtype=int)), x.subs_a.append(np.array(sub_a, dtype=float))
+            
+            # Convert element to substance arrays to np arrays
+            x.gas_prod_I, x.gas_prod_a, x.cond_prod_I, x.cond_prod_a = [[np.array(arr) for arr in coll] for coll in [x.gas_prod_I, x.gas_prod_a, x.cond_prod_I, x.cond_prod_a]]
+
+            reinit = True
+
+        if reinit:
+            x.T = 3000 # K, current temperature
+            x.n = 0.1 # total kmol/kg
+            x.n_j = np.ones(x.N_gas) * 0.1 / x.N_gas
+            if x.N_cond > 0.0:
+                x.n_j = np.concatenate([x.n_j, np.zeros(x.N_cond)])
+            x.pi_i = np.zeros(x.N_elem)
+            x.Deltaln_n = 0.0
+            x.Deltaln_T = 0.0
+            x.Deltan_j = np.zeros(x.N_cond)
+            x.Deltan_j_gas = np.zeros(x.N_gas)
+        
+        # Begin from supply
+        x.P = Pc
+        x.h_0 = 0.0
+        for formula, inputs in supply:
+            sub = self.substances[formula]
+            m_frac, T, P = inputs
+            j = x.subs.index(sub)
+            n_j = m_frac/sub.M
+            x.h_0 += n_j * sub.get_H_D(T) * Rhat * T
+            x.b_i0[x.subs_I[j]] += np.sum(x.subs_a[j] * n_j) # Loop across elements
+        x.b_i0_max = np.max(b_i0)
+
+        N_dof = x.N_elem + x.N_cond + 2
+        
+        iter = 1
+        while iter <= max_iters:
+            rhs = np.array(N_dof)
+            # equation 0, per element
+            for k in range(x.N_elem):
+                rhs[k] = self.ReducedEQ0k(k, x)
+            # equation 1, per condensed product
+            for j in range(x.N_gas, x.N_cond):
+                rhs[j] = self.ReducedEQ1j(j, x)
+            rhs[x.N_elem + x.N_cond]     = self.ReducedEQ2(x)
+            rhs[x.N_elem + x.N_cond + 1] = self.ReducedEQ3(x)
+            
+            jac = np.zeros(N_dof, N_dof)
+            for k in range(x.N_elem):
+                # for (const std::pair<int, double>& ja : relatedGasousSubstances[k]) {
+                for j, n in zip(x.gas_prod_I[k], x.gas_prod_a[k]):
+                    H_D_j = x.subs[j].get_H_D(x.T)
                     # Per-element equation partial derivatives of pi_i, sum across k rows and i columns, a_kj*a_ij*n_j
-                    for (auto &elem_i : substances[ja.first]->composition)
-                        iter.jacobian[k + reverseElements[elem_i.first]*N] += ja.second*elem_i.second*iter.n_j[ja.first];
-                    # Per-element equation partial derivative of Deltaln_n
-                    iter.jacobian[k + (N-2)*N] += ja.second*iter.n_j[ja.first]; # a_kj*n_j
+                    jac[reverseElements[elem_i.first], k] += np.sum(n * x.subs_a[j] * x.n_j[x.subs_I[j]])
                     # Per-element equation partial derivative of Deltaln_T
-                    iter.jacobian[k + (N-1)*N] += ja.second*iter.n_j[ja.first]*substances[ja.first]->GetH_D(iter.T); # a_kj*n_j*H_jstd/(R*T)
-                }
+                    jac[N-1, k] += n * x.n_j[j] * H_D_j # a_kj*n_j*H_jstd/(R*T)
+                    # Per-element equation partial derivative of Deltaln_n
+                    jac[N-2, k] += n * x.n_j[j] # a_kj*n_j
                 # Per-element equation partial derivatives of Deltan_j
-                for (const std::pair<int, double>& ja : relatedCondensedSubstances[k])
-                    iter.jacobian[k + (elements.size() + (ja.first-N_gas))*N] += ja.second;
-            }
-            for j in range(N_gas, N_sub):
+                jac[x.N_elem + (x.cond_prod_I[k] - x.N_gas), k] += x.cond_prod_a[k]
+            for j in range(x.N_gas, x.N_sub):
+                H_D_j = x.subs[j].get_H_D(x.T)
                 # Per-condensed-species equation partial derivatives of pi_i
-                for (auto &elem_i : substances[j]->composition) # sum i, a_ij
-                    iter.jacobian[(elements.size() + (j-N_gas)) + reverseElements[elem_i.first]*N] += elem_i.second;
-                double H_D_j = substances[j]->GetH_D(iter.T);
+                jac[x.cond_prod_I[j], x.N_elem + (j - x.N_gas)] += x.cond_prod_a[j] # sum i, a_ij
                 # Per-element equation partial derivative of Deltaln_T
-                iter.jacobian[(elements.size() + (j-N_gas)) + (N-1)*N] = H_D_j;
-
+                jac[N-1, (x.N_elem + (j-x.N_gas))] = H_D_j
                 # Enthalpy conservation equation partial derivatives of Deltan_j
-                iter.jacobian[(N-1) + (elements.size() + (j-N_gas))*N] = H_D_j;
-            iter.jacobian[(N-2) + (N-2)*N] = -iter.n;
-            for j in range(N_gas):
-                double H_D_j = substances[j]->GetH_D(iter.T);
-                for (auto &elem_i : substances[j]->composition) {
-                    # Molar balance equation partial derivatives of pi_i
-                    iter.jacobian[(N-2) + reverseElements[elem_i.first]*N] += elem_i.second*iter.n_j[j]; # a_ij*n_j
+                jac[x.N_elem + (j-x.N_gas), N-1] = H_D_j
+            jac[N-2, N-2] = -iter.n
+            for j in range(x.N_gas):
+                Cp_D, H_D_j = x.subs[j].GetCp_D(x.T), x.subs[j].get_H_D(x.T)
+                # Molar balance equation partial derivatives of pi_i
+                jac[subs_I[j], N-2] += subs_a[j] * x.n_j[j] # a_ij*n_j
+                # Enthalpy conservation equation partial derivatives of pi_i
+                jac[subs_I[j], N-1] += subs_a[j] * x.n_j[j] * H_D_j # a_ij*n_j*H_jstd/(R*T)
 
-                    # Enthalpy conservation equation partial derivatives of pi_i
-                    iter.jacobian[(N-1) + reverseElements[elem_i.first]*N] += elem_i.second*iter.n_j[j]*H_D_j; # a_ij*n_j*H_jstd/(R*T)
-                }
                 # Molar balance equation partial derivative of Deltaln_n
-                iter.jacobian[(N-2) + (N-2)*N] += iter.n_j[j];
+                jac[N-2, N-2] += x.n_j[j]
                 # Molar balance equation partial derivative of Deltaln_T
-                iter.jacobian[(N-2) + (N-1)*N] += iter.n_j[j]*H_D_j; # n_j*H_jstd/(R*T)
+                jac[N-1, N-2] += x.n_j[j]*H_D_j # n_j*H_jstd/(R*T)
             
                 # Enthalpy conservation equation partial derivative of Deltaln_n
-                iter.jacobian[(N-1) + (N-2)*N] += iter.n_j[j]*H_D_j; # n_j*H_jstd/(R*T)
+                jac[N-2, N-1] += x.n_j[j]*H_D_j # n_j*H_jstd/(R*T)
                 # Enthalpy conservation equation partial derivative of Deltaln_T
-                iter.jacobian[(N-1) + (N-1)*N] += iter.n_j[j]*(substances[j]->GetCp_D(iter.T)+H_D_j*H_D_j); # (n_j*Cp_jstd/R+n_j*H_jstd^2/(R^2*T^2));
-            }
+                jac[N-1, N-1] += x.n_j[j]*(Cp_D+H_D_j**2) # (n_j*Cp_jstd/R+n_j*H_jstd^2/(R^2*T^2));
 
-            DGESV(&N, &nrhs, iter.jacobian, &N, iter.ipiv, iter.funcEvals, &N, &errorCode);
-            if (errorCode != 0) {
-				Log(Severity::ERROR, "Error solving matrix for chem eq step!");
-                result.valid = false;
-				return result;
-            }
-            for k in range(N_e):
-                iter.pi_i[k] -= iter.funcEvals[k];
-            for j in range(N_cond):
-                iter.Deltan_j[j] -= iter.funcEvals[j + elements.size()];
-            iter.Deltaln_n -= iter.funcEvals[N - 2];
-            iter.Deltaln_T -= iter.funcEvals[N - 1];
+            # Newton method update
+            # TODO: line search if singular?
+            upd = np.linalg.solve(jac, rhs)
+            x.pi_i -= upd[:x.N_elem]
+            x.Deltan_j -= upd[x.N_elem:x.N_elem+x.N_cond]
+            x.Deltaln_n -= upd[N_dof - 2]
+            x.Deltaln_T -= upd[N_dof - 1]
 
             # Empirical lambda formulas suggested by NASA
-            lambda1 = 5.0*np.max(np.abs(iter.Deltaln_T), np.abs(iter.Deltaln_n));
-            lambda2 = HUGE_VAL;
+            lambda1 = 5.0*np.max([np.abs(x.Deltaln_T), np.abs(x.Deltaln_n)])
+            lambda2 = float('inf')
             for j in range(N_gas):
-                double H_D_j = substances[j]->GetH_D(iter.T); # H_jstd/(R*T)
-                iter.Deltan_j_gas[j] = iter.Deltaln_n + H_D_j*iter.Deltaln_T -
-                    (H_D_j-substances[j]->GetS_D(iter.T)+log(iter.n_j[j]/iter.n)+log(iter.P/1.0E5));
-                for (auto& elem_i : substances[j]->composition) # sum across i, a_ij*pi_i
-                    iter.Deltan_j_gas[j] += elem_i.second*iter.pi_i[reverseElements[elem_i.first]];
+                H_D_j, S_D_j = x.subs[j].get_H_D(x.T), x.subs[j].get_S_D(x.T) # H_j/(R*T)
+                x.Deltan_j_gas[j] = x.Deltaln_n + H_D_j*x.Deltaln_T -
+                    (H_D_j-S_D_j+log(x.n_j[j]/x.n)+np.log(x.P/1.0E5))
+                x.Deltan_j_gas[j] += np.sum(x.gas_prod_a[j] * x.pi_i[gas_prod_I[j]]) # sum across i, a_ij*pi_i
                 
-                double v = abs(iter.Deltan_j_gas[j]);
+                v = np.abs(x.Deltan_j_gas[j])
                 if v > lambda1: lambda1 = v
-                double ln_nj_n = log(iter.n_j[j]/iter.n);
-                if (ln_nj_n <= -18.420681 && iter.Deltan_j_gas[j] >= 0.0) {
-                    v = abs((-ln_nj_n-9.2103404) / (iter.Deltan_j_gas[j]-iter.Deltaln_n));
-                    if (v < lambda2)
-                        lambda2 = v;
-                }
+                ln_nj_n = np.log(x.n_j[j]/x.n)
+                if ln_nj_n <= -18.420681 and x.Deltan_j_gas[j] >= 0.0:
+                    v = np.abs((-ln_nj_n-9.2103404) / (iter.Deltan_j_gas[j]-iter.Deltaln_n))
+                    if v < lambda2:
+                        lambda2 = v
             
             # Limit corrections to prevent diverging solutions due to large jumps
-            lambda1 = 2.0 / lambda1;
-            lambda = np.min([1.0, lambda1, lambda2])
-            for j in range(N_gas)
-                iter.n_j[j] *= exp(lambda*iter.Deltan_j_gas[j]);
+            lambda1 = 2.0 / lambda1
+            lam = np.min([1.0, lambda1, lambda2])
+            for j in range(N_gas):
+                x.n_j[j] *= np.exp(lam * x.Deltan_j_gas[j])
             for j in range(N_gas, N_sub):
-                iter.n_j[j] = iter.n_j[j]+lambda*iter.Deltan_j[j-gaseousSubstanceCount];
-            iter.n *= np.exp(lambda*iter.Deltaln_n);
-            iter.T *= np.exp(lambda*iter.Deltaln_T);
+                x.n_j[j] = x.n_j[j] + lam*x.Deltan_j[j-x.N_gas]
+            x.n *= np.exp(lam * x.Deltaln_n)
+            x.T *= np.exp(lam * x.Deltaln_T)
 
             # Test for convergence, roughly testing the least expensive first
-            if np.abs(iter.Deltaln_T) <= 1.0E-4:
-                sumN_j = np.sum(iter.n_j)
-                convergeGas = np.sum(iter.n_j[:N_gas]*np.abs(iter.Deltan_j_gas)) / sumN_j
-                convergeCondensed = np.sum(abs(iter.Deltan_j)) / sumN_j
-                convergeTotal = iter.n*np.abs(iter.Deltaln_n)/sumN_j;
+            if np.abs(x.Deltaln_T) <= 1.0E-4:
+                sumN_j = np.sum(x.n_j)
+                convergeGas = np.sum(x.n_j[:N_gas]*np.abs(x.Deltan_j_gas)) / sumN_j
+                convergeCondensed = np.sum(np.abs(x.Deltan_j)) / sumN_j
+                convergeTotal = x.n * np.abs(x.Deltaln_n) / sumN_j
                 if convergeGas <= 0.5E-5 and convergeCondensed <= 0.5E-5 and convergeTotal <= 0.5E-5:
-                    bool massBalanceConvergence = True;
-                    for i in range(N_e):
-                        double sum_aij_nj = 0.0;
-                        for (const std::pair<int, double>& ja : relatedGasousSubstances[i])
-                            sum_aij_nj += ja.second * iter.n_j[ja.first];
-                        if (abs(iter.b_i0[i] - sum_aij_nj) > iter.b_i0_max*1.0E-6) {
-                            massBalanceConvergence = false;
-                            break;
-                        }
+                    massBalanceConvergence = True
+                    for i in range(x.N_elem):
+                        sum_aij_nj = np.sum(x.gas_prod_a[i] * x.n_j[x.gas_prod_I[i]])
+                        if np.abs(x.b_i0[i] - sum_aij_nj) > x.b_i0_max*1.0E-6:
+                            massBalanceConvergence = False; break
                     if massBalanceConvergence: break
                     # TODO: Also do TRACE != 0 convergence test for pi_i
 
             iter += 1
+        
+        if iter == max_iters + 1: iter = max_iters # If terminated due to max_iters, will be 1 too high
 
+        result = Result(True)
+        result.T = x.T
+        result.M = 1/x.n
+        result.R = Rhat / result.M
+
+        N_dof = x.N_elem + x.N_cond + 1
+        dP, dT = np.zeros(N_dof), np.zeros(N_dof)
+        M = np.zeros(N_dof, N_dof) # T and P deriv coeffs
+
+        # dpi_i/dlnT then dn_j/dln_T then dlnn/dlnT
+        # Per-element equation
+        for k in range(N_elem):
+            # TODO: Better way? > 1.0E-7 mainly prevents electron gas row from ruining the matrix
+            for j, n in zip(x.gas_prod_I[k], x.gas_prod_a[k]): if x.n_j[j] > 1.0E-7:
+                M[x.subs_I[j], k] += n * x.n_j[j] * x.subs_I[j] # a_kj*a_ij*n_j
+                M[-1, k] += n * x.n_j[j] # a_kj*n_j
+                dT -= n * x.n_j[j] * x.subs[j].get_H_D(x.T)
+                dP += n * x.n_j[j]
+            # TODO: rename n to a!
+            for j, n in zip(x.cond_prod_I[k], x.cond_prod_a[k]): if x.n_j[j] > 1.0E-7:
+                M[x.N_elem + j, k] += n # a_kj
+            # Basically make sure there are some substances with this element with a concentration larger than 1.0E-7
+            if not np.any(M[:, k] != 0.0): # Just say that the derivative = 0.0
+                M[k, k], dT[k], dP[k] = 1.0, 0.0, 0.0 # TODO: Why was this != 0.0, very small? - may have forgotten to = 0 in that old version
+        # TODO: Something similar to above for very low concentrations?
+        # Per-condensed equation
+        for j in range(x.N_gas, x.N_sub): if x.n_j[j] > 1.0E-7:
+            M[x.subs_I[j], N_elem+(j-x.N_gas)] += x.subs_a[j] # a_ij
+            dT[x.N_elem+(j-x.N_gas)] += -x.subs[j].get_H_D(x.T) # -H_jstd/(R*T)
+            # dP = 0 due to incompressible
+        # Singular equation
+        for j in range(x.N_gas): if x.n_j[j] > 1.0E-7:
+            M[x.subs_I[j], -1] += x.n_j[j] * np.sum(x.subs_a[j]) # a_ij*n_j
+            tempDerivs [-1] -= x.n_j[j] * x.subs[j].get_H_D(x.T) # n_j*H_jstd/(R*T)
+            pressDerivs[-1] += x.n_j[j] # n_j
+
+        dT, dP = np.linalg.solve(M, np.stack(dT, dP, axis=-1)).unstack(axis=-1)
+
+        # TODO: If we are including condensed in Cp shouldn't they be in M too?
+        result.Cp = np.sum([x.n_j[j] * x.subs[j].get_Cp_D(x.T) for j in range(x.N_sub)]) # Frozen contribution
+        # TODO: Coeffs have already been computed in jacobian matrix, can we re-use?        
+        for i in range(x.N_elem)
+            for j, n in zip(x.gas_prod_I[i], x.gas_prod_a[i]):
+                result.Cp += n * x.n_j[j] * x.subs[j].get_H_D(x.T)*dT[i];
+        for j in range(x.N_gas, x.N_sub):
+            result.Cp += x.subs[j].get_H_D(x.T)*dT[x.N_elem+(j-x.N_gas)];
+        for j in range(x.N_gas):
+            H_Dstd = x.subs[j].get_H_D(x.T);
+            result.Cp += x.n_j[j]*(H_Dstd*dT[N_dof-1]+H_Dstd**2);
+        result.Cp *= Rhat
+
+        dlnV_dlnT = dT[N-1] + 1.0 # dlnn/dlnT+1
+        dlnV_dlnP = dP[N-1] - 1.0 # dlnn/dlnP-1
+        result.Cv      = result.Cp + result.R*dlnV_dlnT**2/dlnV_dlnP
+        result.gamma   = result.Cp / result.Cv
+        result.gamma_s = -result.gamma / dlnV_dlnP
+        result.composition = { x.subs[j].formula: x.n_j[j]*result.M for j in range(x.N_sub) }
 
         return result, internal_state
-
-    # */
-    # class ThermochemicalSolverGibbsMinHP {
-    # private:
-        # struct ThermochemicalSubstanceInput {
-            # ThermochemicalSubstance *substance;
-            # double m_frac; # kg substance / kg total
-            # double T; # K
-            # double P; # Pa
-
-            # ThermochemicalSubstanceInput(ThermochemicalSubstance *substance, double m_frac, double T, double P);
-        # };
-
-        # struct IterationVariables {
-            # double P; # Pa, const
-            # double h_0; # const
-            # double n;
-            # double Deltaln_n;
-            # double T;
-            # double Deltaln_T;
-            # # This has the same size as substances
-            # double *n_j; # kmol of substance / kg of mixture
-            # # This has the size of subtsances minus gaseousSubstanceCount
-            # double *Deltan_j;
-            # # These have the same size as elements
-            # double *pi_i;
-            # double *b_i0; # const
-            # double b_i0_max;
-
-            # # Computed after the above
-            # double *Deltan_j_gas; # Size of gaseousSubstanceCount
-            # double *jacobian;
-            # double *funcEvals;
-            # int *ipiv;
-        # };
-        
-        # std::vector<ThermochemicalSubstance *> substances;
-        # int gaseousSubstanceCount; # Any subsequent entries are condensed
-        # std::vector<Element::Symbol> elements; # local to global (usage ID to periodic table)
-        # int reverseElements[Element::COUNT]; # global to local
-        # # Local element to array of local substances (and relevant composition coefficient), used for the per-element equation
-		# # TODO: Why did I make this a pointer?
-        # std::vector<std::pair<int, double>> *relatedGasousSubstances;
-        # std::vector<std::pair<int, double>> *relatedCondensedSubstances;
-        # # May contain substances not in the local subtances list if they are reactant-only
-        # std::vector<ThermochemicalSubstanceInput> supply;
-        # IterationVariables iter;
-
-        # double ReducedEQ0k(int k);
-        # double ReducedEQ1j(int j);
-        # double ReducedEQ2();
-        # double ReducedEQ3(); # Enthalpy conservation
-    # public:
-        # struct Result {
-        # public:
-            # double T; # K
-            # double Cp;
-            # double Cv;
-            # double gamma; # Specific heat ratio
-            # # Used for speed of sound and ???
-            # double gamma_s; # Isentropic exponent
-            # double M; # kg/kmol
-            # double R;
-            # bool valid; # No errors and has any inputs
-            # int iterations;
-            # # Composition by molar fraction
-            # std::vector<std::pair<ThermochemicalSubstance*, double>> composition;
-        # };
-
-        # ThermochemicalSolverGibbsMinHP();
-        # ThermochemicalSolverGibbsMinHP(const std::vector<ThermochemicalSubstance *> &possibleReactants, const ThermochemicalDatabase &database);
-        # ThermochemicalSolverGibbsMinHP & operator=(ThermochemicalSolverGibbsMinHP &&other);
-        # ~ThermochemicalSolverGibbsMinHP();
-
-        # # If persistent, must still be resupplied, but last solution will be the inital guess!
-        # void Clear(bool persistentSolution);
-        # #void Supply(ThermochemicalSubstance* substance, double m_frac, double T); # mass fraction, T(K)
-        # void Supply(ThermochemicalSubstance *substance, double m_frac, double T, double P); # mass fraction, T(K), P(Pa)
-        # Result Solve(double P, int iterations, bool returnComposition = false); # P(Pa)
-
-        # no_transfer_functions(ThermochemicalSolverGibbsMinHP);
-    # };
-
-
-
-# OLD C Body
-# namespace SSTS {
-    # ThermochemicalSubstance::PROPEPPiecewiseProvider::PROPEPPiecewiseProvider() :
-        # PropertyProvider(false),
-        # lowerRange(HUGE_VAL),
-        # upperRange(HUGE_VAL),
-        # coefficients{0.0}
-    # { }
-
-    # ThermochemicalSubstance::PROPEPSingleTempReactantProvider::PROPEPSingleTempReactantProvider(double T, double DeltaHForm) :
-        # PropertyProvider(true),
-        # T(T),
-        # DeltaHForm(DeltaHForm)
-    # { }
-
-    # double ThermochemicalSubstance::PROPEPSingleTempReactantProvider::GetH_D(double T) const {
-        # return DeltaHForm / (Universal::R * T);
-    # }
-
-    # const ThermochemicalSubstance::PropertyProvider ThermochemicalSubstance::GLOBAL_DEFAULT_PROVIDER(false);
-    # const double ThermochemicalSubstance::DYNAMIC_TEMPERATURE = -1.0;
-
-    # ThermochemicalSubstance::ThermochemicalSubstance() :
-        # formula("null"),
-        # comment("undefined"),
-        # condensed(false),
-        # isProduct(false),
-        # M(0.0),
-        # T_min(-HUGE_VAL),
-        # T_max( HUGE_VAL)
-	# {
-        # for (int i = 0; i < PropertyProvider::COUNT; ++i)
-            # propertyProviders[i] = &GLOBAL_DEFAULT_PROVIDER;
-    # }
-
-    # ThermochemicalSubstance::ThermochemicalSubstance(ThermochemicalSubstance &&other) :
-        # formula(std::move(other.formula)),
-        # comment(std::move(other.comment)),
-        # condensed(other.condensed),
-        # isProduct(other.isProduct),
-        # composition(std::move(other.composition)),
-        # M(other.M),
-        # T_min(other.T_min),
-        # T_max(other.T_max)
-	# {
-        # for (int i = 0; i < PropertyProvider::COUNT; ++i) {
-            # propertyProviders[i] = other.propertyProviders[i];
-            # other.propertyProviders[i] = &GLOBAL_DEFAULT_PROVIDER;
-        # }
-    # }
-
-    # ThermochemicalSubstance::~ThermochemicalSubstance() {
-        # for (int i = 0; i < PropertyProvider::COUNT; ++i)
-            # if (propertyProviders[i]->automanaged)
-                # delete propertyProviders[i];
-    # }
-
-    # ThermochemicalDatabase::ThermochemicalDatabase() { }
-
-    # ThermochemicalSubstance* ThermochemicalDatabase::GetSubstance(const std::string& formula) {
-        # for (ThermochemicalSubstance& chem : substances)
-            # if (chem.formula == formula)
-                # return &chem;
-        # return nullptr;
-    # }
-
-    # const std::vector<ThermochemicalSubstance> & ThermochemicalDatabase::GetAllSubstances() const {
-        # return substances;
-    # }
-
-    # ThermochemicalSolverGibbsMinHP::ThermochemicalSubstanceInput::ThermochemicalSubstanceInput(ThermochemicalSubstance* substance, double m_frac, double T, double P) :
-        # substance(substance),
-        # m_frac(m_frac),
-        # T(T),
-        # P(P)
-    # { }
-
-    # ThermochemicalSolverGibbsMinHP::ThermochemicalSolverGibbsMinHP() :
-        # relatedGasousSubstances   (nullptr),
-        # relatedCondensedSubstances(nullptr)
-    # { }
-
-    # ThermochemicalSolverGibbsMinHP::ThermochemicalSolverGibbsMinHP(const std::vector<ThermochemicalSubstance *> &possibleReactants, const ThermochemicalDatabase &database) {
-        # for (int i = 0; i < Element::COUNT; ++i)
-            # reverseElements[i] = Element::COUNT;
-        # bool presentElements[Element::COUNT] = { false };
-        # # Always add electrons to always include ions
-        # presentElements[Element::E] = true;
-        # reverseElements[Element::E] = 0;
-        # elements.push_back(Element::E);
-        # for (ThermochemicalSubstance *chem : possibleReactants)
-            # for (const std::pair<Element::Symbol, double> &elem : chem->composition)
-                # if (!presentElements[elem.first]) {
-                    # presentElements[elem.first] = true;
-                    # reverseElements[elem.first] = elements.size();
-                    # elements.push_back(elem.first);
-                # }
-        # std::vector<ThermochemicalSubstance*> potentialCondensedState;
-        # for (const ThermochemicalSubstance &chem : database.GetAllSubstances())
-            # if (chem.isProduct) {
-                # bool relevant = true;
-                # for (const std::pair<Element::Symbol, double> &elem : chem.composition)
-                    # relevant &= presentElements[elem.first];
-                # if (relevant && (!(chem.T_min <= 2000.0 && chem.T_max >= 4000.0) || chem.condensed)) {
-                    # #std::cerr << "Substance " << chem.formula << " has been elimated for debugging due to inadequate temperature range and/or for being condensed" << std::endl;
-                    # relevant = false;
-                # }
-                # if (relevant) {
-                    # #std::cerr << chem.formula << " was deemed relevant" << std::endl;
-                    # if (chem.condensed)
-                        # potentialCondensedState.push_back(const_cast<ThermochemicalSubstance*>(&chem));
-                    # else
-                        # substances.push_back(const_cast<ThermochemicalSubstance*>(&chem));
-                # }
-            # }
-        # gaseousSubstanceCount = substances.size();
-        # for (ThermochemicalSubstance* chem : potentialCondensedState)
-            # substances.push_back(chem);
-
-        # relatedGasousSubstances = new std::vector<std::pair<int, double>>[elements.size()];
-        # for (int j = 0; j < gaseousSubstanceCount; ++j)
-            # for (const std::pair<Element::Symbol, double>& elem : substances[j]->composition)
-                # relatedGasousSubstances[reverseElements[elem.first]].push_back(std::pair<int, double>(j, elem.second));
-        # relatedCondensedSubstances = new std::vector<std::pair<int, double>>[elements.size()];
-        # for (int j = gaseousSubstanceCount; j < substances.size(); ++j)
-            # for (const std::pair<Element::Symbol, double>& elem : substances[j]->composition)
-                # relatedCondensedSubstances[reverseElements[elem.first]].push_back(std::pair<int, double>(j, elem.second));
-        
-        # iter.n_j = new double[substances.size()];
-        # if (substances.size() > gaseousSubstanceCount)
-            # iter.Deltan_j = new double[substances.size() - gaseousSubstanceCount];
-        # else
-            # iter.Deltan_j = nullptr;
-        # iter.pi_i = new double[elements.size()];
-        # iter.b_i0 = new double[elements.size()];
-
-        # iter.Deltan_j_gas = new double[gaseousSubstanceCount];
-        # int N = elements.size() + (substances.size()-gaseousSubstanceCount) + 2;
-        # iter.jacobian  = new double[N*N];
-        # # Make large enough to store elements.size() + condensedSubstanceCount + 1 for derivative RHS
-        # iter.funcEvals = new double[2*(N-1)];
-        # iter.ipiv      = new int[N];
-
-        # iter.T = -1.0; # Mark as uninitialized, Clear() will handle
-    # }
-
-    # void ThermochemicalSolverGibbsMinHP::Clear(bool persistentSolution) {
-        # supply.clear();
-        # if (!persistentSolution || iter.T == -1.0) { # First time or voluntary reset
-            # # Similar to original CEA first guesses
-            # iter.T = 3000; # K
-            # iter.n = 0.1; # total kmol/kg
-            # # TODO: n_j for condensed is undefined! 
-            # for (int j = 0; j < gaseousSubstanceCount; ++j)
-                # iter.n_j[j] = 0.1 / gaseousSubstanceCount;
-            # for (int j = gaseousSubstanceCount; j < substances.size(); ++j)
-                # iter.n_j[j] = 0.0;
-            # for (int i = 0; i < elements.size(); ++i)
-                # iter.pi_i[i] = 0.0;
-            # iter.Deltaln_n = 0.0;
-            # iter.Deltaln_T = 0.0;
-            # for (int j = 0; j < substances.size() - gaseousSubstanceCount; ++j)
-                # iter.Deltan_j[j] = 0.0;
-        # }
-    # }
-
-    # /*void ThermochemicalSolverGibbsMinHP::Supply(ThermochemicalSubstance* substance, double m_frac, double T)
-    # {
-        # # TODO: Put in saturated P (if available)!
-        # supply.push_back(ThermochemicalSubstanceInput(substance, m_frac, T, 1.0E5));
-    # }*/
-
-    # void ThermochemicalSolverGibbsMinHP::Supply(ThermochemicalSubstance *substance, double m_frac, double T, double P) {
-        # supply.push_back(ThermochemicalSubstanceInput(substance, m_frac, T, P));
-    # }
-
-    # ThermochemicalSolverGibbsMinHP::Result ThermochemicalSolverGibbsMinHP::Solve(double P, int iterations, bool returnComposition) {
-        # if (supply.empty()) {
-            # Result result;
-            # result.valid = false;
-
-            # return result;
-        # }
-        # Result result;
-        # result.valid = true;
-        # result.iterations = 0;
-        # # TODO: Deltaln_n, Deltaln_T, Deltan_j initialization!
-        # iter.P = P;
-
-        # # Specific initial (fixed) enthalpy
-        # iter.h_0 = 0.0;
-        # for (int i = 0; i < elements.size(); ++i)
-            # iter.b_i0[i] = 0.0;
-        # # Compute input molar fractions from mass inputs
-        # for (ThermochemicalSubstanceInput &input : supply) {
-            # double n_j = input.m_frac/input.substance->M; #(input.m/input.substance->M)/m;
-            # #std::cerr << "input: " << input.substance->formula << " " << n_j << " " << input.T << " " << input.P << std::endl;
-            # iter.h_0 += n_j * input.substance->GetH_D(input.T) * Universal::R * input.T;
-            # for (const std::pair<Element::Symbol, double> &elem : input.substance->composition)
-                # # TODO: Should just be 2 kgatoms/kmol of H2O right?
-                # # b_i0 is used to keep the elemental mass density balance identical to the inputs
-                # iter.b_i0[reverseElements[elem.first]] += elem.second * n_j;
-        # }
-        # iter.b_i0_max = 0.0;
-        # for (int i = 0; i < elements.size(); ++i) if (iter.b_i0[i] > iter.b_i0_max) iter.b_i0_max = iter.b_i0[i];
-
-        # int condensedSubstanceCount = substances.size() - gaseousSubstanceCount;
-        # int N = elements.size() + condensedSubstanceCount + 2;
-        # int nrhs = 1; # Only one rhs
-        # int errorCode;
-        
-        # for (int iteration = 0; iteration < iterations; ++iteration) {
-            # # equation 0, per element
-            # for (int k = 0; k < elements.size(); ++k)
-                # iter.funcEvals[k] = ReducedEQ0k(k);
-            # # equation 1, per condensed product
-            # for (int j = 0; j < condensedSubstanceCount; ++j)
-                # iter.funcEvals[j + elements.size()] = ReducedEQ1j(j + gaseousSubstanceCount);
-            # iter.funcEvals[elements.size() + condensedSubstanceCount]     = ReducedEQ2();
-            # iter.funcEvals[elements.size() + condensedSubstanceCount + 1] = ReducedEQ3();
-            
-            # # Initialize with 0, only fill non-zero elements
-            # for (int n = 0; n < N*N; ++n) iter.jacobian[n] = 0.0;
-            # for (int k = 0; k < elements.size(); ++k) {
-                # for (const std::pair<int, double>& ja : relatedGasousSubstances[k]) {
-                    # # Per-element equation partial derivatives of pi_i, sum across k rows and i columns, a_kj*a_ij*n_j
-                    # for (auto &elem_i : substances[ja.first]->composition)
-                        # iter.jacobian[k + reverseElements[elem_i.first]*N] += ja.second*elem_i.second*iter.n_j[ja.first];
-                    # # Per-element equation partial derivative of Deltaln_n
-                    # iter.jacobian[k + (N-2)*N] += ja.second*iter.n_j[ja.first]; # a_kj*n_j
-                    # # Per-element equation partial derivative of Deltaln_T
-                    # iter.jacobian[k + (N-1)*N] += ja.second*iter.n_j[ja.first]*substances[ja.first]->GetH_D(iter.T); # a_kj*n_j*H_jstd/(R*T)
-                # }
-                # # Per-element equation partial derivatives of Deltan_j
-                # for (const std::pair<int, double>& ja : relatedCondensedSubstances[k])
-                    # iter.jacobian[k + (elements.size() + (ja.first-gaseousSubstanceCount))*N] += ja.second;
-            # }
-            # for (int j = gaseousSubstanceCount; j < substances.size(); ++j) {
-                # # Per-condensed-species equation partial derivatives of pi_i
-                # for (auto &elem_i : substances[j]->composition) # sum i, a_ij
-                    # iter.jacobian[(elements.size() + (j-gaseousSubstanceCount)) + reverseElements[elem_i.first]*N] += elem_i.second;
-                # double H_D_j = substances[j]->GetH_D(iter.T);
-                # # Per-element equation partial derivative of Deltaln_T
-                # iter.jacobian[(elements.size() + (j-gaseousSubstanceCount)) + (N-1)*N] = H_D_j;
-
-                # # Enthalpy conservation equation partial derivatives of Deltan_j
-                # iter.jacobian[(N-1) + (elements.size() + (j-gaseousSubstanceCount))*N] = H_D_j;
-            # }
-            # iter.jacobian[(N-2) + (N-2)*N] = -iter.n;
-            # for (int j = 0; j < gaseousSubstanceCount; ++j) {
-                # double H_D_j = substances[j]->GetH_D(iter.T);
-                # for (auto &elem_i : substances[j]->composition) {
-                    # # Molar balance equation partial derivatives of pi_i
-                    # iter.jacobian[(N-2) + reverseElements[elem_i.first]*N] += elem_i.second*iter.n_j[j]; # a_ij*n_j
-
-                    # # Enthalpy conservation equation partial derivatives of pi_i
-                    # iter.jacobian[(N-1) + reverseElements[elem_i.first]*N] += elem_i.second*iter.n_j[j]*H_D_j; # a_ij*n_j*H_jstd/(R*T)
-                # }
-                # # Molar balance equation partial derivative of Deltaln_n
-                # iter.jacobian[(N-2) + (N-2)*N] += iter.n_j[j];
-                # # Molar balance equation partial derivative of Deltaln_T
-                # iter.jacobian[(N-2) + (N-1)*N] += iter.n_j[j]*H_D_j; # n_j*H_jstd/(R*T)
-            
-                # # Enthalpy conservation equation partial derivative of Deltaln_n
-                # iter.jacobian[(N-1) + (N-2)*N] += iter.n_j[j]*H_D_j; # n_j*H_jstd/(R*T)
-                # # Enthalpy conservation equation partial derivative of Deltaln_T
-                # iter.jacobian[(N-1) + (N-1)*N] += iter.n_j[j]*(substances[j]->GetCp_D(iter.T)+H_D_j*H_D_j); # (n_j*Cp_jstd/R+n_j*H_jstd^2/(R^2*T^2));
-            # }
-
-            # DGESV(&N, &nrhs, iter.jacobian, &N, iter.ipiv, iter.funcEvals, &N, &errorCode);
-            # if (errorCode != 0) {
-				# Log(Severity::ERROR, "Error solving matrix for chem eq step!");
-                # result.valid = false;
-				# return result;
-            # }
-            # for (int k = 0; k < elements.size(); ++k)
-                # iter.pi_i[k] -= iter.funcEvals[k];
-            # for (int j = 0; j < condensedSubstanceCount; ++j)
-                # iter.Deltan_j[j] -= iter.funcEvals[j + elements.size()];
-            # iter.Deltaln_n -= iter.funcEvals[N - 2];
-            # iter.Deltaln_T -= iter.funcEvals[N - 1];
-
-            # # Empirical lambda formulas suggested by NASA
-            # double lambda1 = 5.0*std::max(abs(iter.Deltaln_T), abs(iter.Deltaln_n));
-            # double lambda2 = HUGE_VAL;
-            # for (int j = 0; j < gaseousSubstanceCount; ++j) {
-                # double H_D_j = substances[j]->GetH_D(iter.T); # H_jstd/(R*T)
-                # iter.Deltan_j_gas[j] = iter.Deltaln_n + H_D_j*iter.Deltaln_T -
-                    # (H_D_j-substances[j]->GetS_D(iter.T)+log(iter.n_j[j]/iter.n)+log(iter.P/1.0E5));
-                # for (auto& elem_i : substances[j]->composition) # sum across i, a_ij*pi_i
-                    # iter.Deltan_j_gas[j] += elem_i.second*iter.pi_i[reverseElements[elem_i.first]];
-                
-                # double v = abs(iter.Deltan_j_gas[j]);
-                # if (v > lambda1)
-                    # lambda1 = v;
-                # double ln_nj_n = log(iter.n_j[j]/iter.n);
-                # if (ln_nj_n <= -18.420681 && iter.Deltan_j_gas[j] >= 0.0) {
-                    # v = abs((-ln_nj_n-9.2103404) / (iter.Deltan_j_gas[j]-iter.Deltaln_n));
-                    # if (v < lambda2)
-                        # lambda2 = v;
-                # }
-            # }
-            
-            # # Limit corrections to prevent diverging solutions due to large jumps
-            # lambda1 = 2.0 / lambda1;
-            # double lambda = std::min({1.0, lambda1, lambda2});
-            # for (int j = 0; j < gaseousSubstanceCount; ++j)
-                # iter.n_j[j] *= exp(lambda*iter.Deltan_j_gas[j]);
-            # for (int j = gaseousSubstanceCount; j < substances.size(); ++j)
-                # iter.n_j[j] = iter.n_j[j]+lambda*iter.Deltan_j[j-gaseousSubstanceCount];
-            # iter.n *= exp(lambda*iter.Deltaln_n);
-            # iter.T *= exp(lambda*iter.Deltaln_T);
-
-            # # Test for convergence, roughly testing the least expensive first
-            # if (abs(iter.Deltaln_T) <= 1.0E-4) {
-                # double sumN_j = 0.0;
-                # for (int j = 0; j < substances.size(); ++j)
-                    # sumN_j += iter.n_j[j];
-                # double convergeGas = 0.0;
-                # for (int j = 0; j < gaseousSubstanceCount; ++j)
-                    # convergeGas += iter.n_j[j]*abs(iter.Deltan_j_gas[j]);
-                # convergeGas /= sumN_j;
-                # double convergeCondensed = 0.0;
-                # for (int j = gaseousSubstanceCount; j < substances.size(); ++j)
-                    # convergeCondensed += abs(iter.Deltan_j[j-gaseousSubstanceCount]);
-                # convergeGas /= sumN_j;
-                # double convergeTotal = iter.n*abs(iter.Deltaln_n)/sumN_j;
-                # if (convergeGas <= 0.5E-5 && convergeCondensed <= 0.5E-5 && convergeTotal <= 0.5E-5) {
-                    # bool massBalanceConvergence = true;
-                    # for (int i = 0; i < elements.size(); ++i) {
-                        # double sum_aij_nj = 0.0;
-                        # for (const std::pair<int, double>& ja : relatedGasousSubstances[i])
-                            # sum_aij_nj += ja.second * iter.n_j[ja.first];
-                        # if (abs(iter.b_i0[i] - sum_aij_nj) > iter.b_i0_max*1.0E-6) {
-                            # massBalanceConvergence = false;
-                            # break;
-                        # }
-                    # }
-                    # if (massBalanceConvergence)
-                        # break;
-                    # # TODO: Also do TRACE != 0 convergence test for pi_i
-                # }
-            # }
-            # ++result.iterations;
-        # }
-
-        # result.T = iter.T;
-        # result.M = 1/iter.n;
-        # result.R = Universal::R / result.M;
-        # #std::cerr << "result: " << result.T << " " << result.M << std::endl;
-
-        # N = elements.size() + condensedSubstanceCount + 1;
-        # # Can re-use as one less element is needed here and overriden data is useless after equilibrium iteration
-        # double* tempDerivCoeffMatrix = iter.jacobian;
-        # double* tempDerivs = iter.funcEvals;
-        # double* pressDerivs = &iter.funcEvals[N];
-
-        # for (int n = 0; n < N*N; ++n) tempDerivCoeffMatrix[n] = 0.0;
-        # # dpi_i/dlnT then dn_j/dln_T then dlnn/dlnT
-        # # Per-element equation
-        # for (int k = 0; k < elements.size(); ++k) {
-            # tempDerivs [k] = 0.0;
-            # pressDerivs[k] = 0.0;
-            # # TODO: Better way? > 1.0E-7 mainly prevents electron gas row from ruining the matrix
-            # for (const std::pair<int, double> &ja : relatedGasousSubstances[k])
-                # if (iter.n_j[ja.first] > 1.0E-7) {
-                    # for (auto& elem_i : substances[ja.first]->composition) # a_kj*a_ij*n_j
-                        # tempDerivCoeffMatrix[k + reverseElements[elem_i.first]*N] += ja.second*elem_i.second*iter.n_j[ja.first];
-                    # tempDerivCoeffMatrix[k + (N-1)*N] += ja.second * iter.n_j[ja.first]; # a_kj*n_j
-                    # tempDerivs [k] -= ja.second * iter.n_j[ja.first] * substances[ja.first]->GetH_D(iter.T); # a_kj*n_j*H_jstd/(R*T)
-                    # pressDerivs[k] += ja.second * iter.n_j[ja.first]; # a_kj*n_j
-                # }
-            # for (const std::pair<int, double> &ja : relatedCondensedSubstances[k]) # a_kj
-                # if (iter.n_j[ja.first] > 1.0E-7)
-                    # tempDerivCoeffMatrix[k + (elements.size()+ja.first)*N] += ja.second;
-            # # Basically check if there were any substances with this element with a concentration larger than 1.0E-7
-            # for (int n = 0; n < N; ++n)
-                # if (tempDerivCoeffMatrix[k + n*N] != 0.0)
-                    # goto skip_edge_case;
-            # # Just say that the derivative = 0.0
-            # tempDerivCoeffMatrix[k + k*N] = 1.0;
-            # tempDerivs [k] = 0.0; # TODO: Why was this != 0.0, very small? - may have forgotten to =0 above initially
-            # pressDerivs[k] = 0.0;
-        # skip_edge_case:;
-        # }
-        # # TODO: Something similar to above for very low concentrations?
-        # # Per-condensed equation
-        # for (int j = gaseousSubstanceCount; j < substances.size(); ++j) {
-            # if (iter.n_j[j] > 1.0E-7) {
-                # for (auto& elem_i : substances[j]->composition) # a_ij
-                    # tempDerivCoeffMatrix[(elements.size()+(j-gaseousSubstanceCount))+(reverseElements[elem_i.first])*N] += elem_i.second;
-                # tempDerivs[elements.size()+(j-gaseousSubstanceCount)] += -substances[j]->GetH_D(iter.T); # -H_jstd/(R*T)
-            # }
-            # pressDerivs[elements.size()+(j-gaseousSubstanceCount)] = 0.0;
-        # }
-        # # Singular equation
-        # tempDerivs [N-1] = 0.0;
-        # pressDerivs[N-1] = 0.0;
-        # for (int j = 0; j < gaseousSubstanceCount; ++j)
-            # if (iter.n_j[j] > 1.0E-7) {
-                # for (auto &elem_i : substances[j]->composition) # a_ij*n_j
-                    # tempDerivCoeffMatrix[(N-1)+reverseElements[elem_i.first]*N] += elem_i.second*iter.n_j[j];
-                # tempDerivs [N-1] -= iter.n_j[j] * substances[j]->GetH_D(iter.T); # n_j*H_jstd/(R*T)
-                # pressDerivs[N-1] += iter.n_j[j]; # n_j
-            # }
-        # nrhs = 2;
-        # DGESV(&N, &nrhs, tempDerivCoeffMatrix, &N, iter.ipiv, tempDerivs, &N, &errorCode);
-        # if (errorCode != 0) {
-			# Log(Severity::ERROR, std::format("Error solving matrix for derivatives needed for equilibrium specific heat! LAPACK Code: {}", errorCode));
-            # result.valid = false;
-			# return result;
-        # }
-        # # TODO: If we are including condensed in Cp shouldn't they be in M too?
-        # result.Cp = 0.0;
-        # for (int j = 0; j < substances.size(); ++j) # Frozen contribution
-            # result.Cp += iter.n_j[j]*substances[j]->GetCp_D(iter.T);
-        # # TODO: Coeffs have already been computed in jacobian matrix, can we re-use?
-        # for (int i = 0; i < elements.size(); ++i)
-            # for (const std::pair<int, double>& ja : relatedGasousSubstances[i])
-                # result.Cp += ja.second*iter.n_j[ja.first]*substances[ja.first]->GetH_D(iter.T)*tempDerivs[i];
-        # for (int j = gaseousSubstanceCount; j < substances.size(); ++j)
-            # result.Cp += substances[j]->GetH_D(iter.T)*tempDerivs[elements.size()+(j-gaseousSubstanceCount)];
-        # for (int j = 0; j < gaseousSubstanceCount; ++j) {
-            # double H_Dstd = substances[j]->GetH_D(iter.T);
-            # result.Cp += iter.n_j[j]*(H_Dstd*tempDerivs[N-1]+H_Dstd*H_Dstd);
-        # }
-        # result.Cp *= Universal::R;
-
-        # double dlnV_dlnT = tempDerivs [N-1] + 1.0; # dlnn/dlnT+1
-        # double dlnV_dlnP = pressDerivs[N-1] - 1.0; # dlnn/dlnP-1
-        # result.Cv      = result.Cp + result.R*dlnV_dlnT*dlnV_dlnT/dlnV_dlnP;
-        # result.gamma   = result.Cp / result.Cv;
-        # result.gamma_s = -result.gamma / dlnV_dlnP;
-
-        # # TODO: Use gamma as that is standard for ideal gases
-        # # gamma_s, isentropic expansion factor, is not defined by the usual relationship for a reacting mixture
-        # #     Due to more compilcated derivatives, see https:#en.wikipedia.org/wiki/Relations_between_heat_capacities
-        # # Cp-Cv=R, k=Cp/Cv, Cv=Cp-R, k=Cp/(Cp-R), k=1/(1-R/Cp)
-        # #result.k = 1.0/(1.0-result.R/result.Cp);
-        # if (returnComposition)
-            # for (int j = 0; j < substances.size(); ++j)
-                # result.composition.push_back(std::pair<ThermochemicalSubstance*, double>(substances[j], iter.n_j[j]*result.M));
-
-        # return result;
-    # }
-
-    # /*
-    # Unimplented NASA Recommendations:
-    # Only compute n_j from lnn_j from mole fractions larger than a threshold (during update) otherwise set to 0 (max 35 iterations)
-        # There are separate thresholds for ionized and non ionized species. Ratios for overly abundant species
-    # Use P_0 (for gibbs energy) relevant to the specific source (use 1bar for all right now)
-    # Singularity detection and identification
-
-
-
-    # Differences between other versions:
-    # Introduced a limitation where species significantly outside of the available temperature ranges are not considered
-        # Need to move out of initialization and change initial guess for these to 0 and leave out unless it becomes relevant
-    # Doesn't support condensed. Nasa supports condensed by first solving then adding condensed and resuming.
-        # Current, at start, condensed species want to become negative. Could just try taking the abs of the n_j
-    # */
-# }
-
