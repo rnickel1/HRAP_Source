@@ -25,11 +25,8 @@ def main():
     
     # See https://github.com/hoffstadt/DearPyGui
 
-    def save_callback():
-        print('Save Clicked')
-
     dpg.create_context()
-    dpg.create_viewport(title='HRAP', width=800, height=600)
+    dpg.create_viewport(title='HRAP', width=800, height=600) # small_icon='a.ico', large_icon='\a.ico'
     dpg.setup_dearpygui()
     dpg.set_viewport_vsync(False)
     # dpg.set_viewport_vsync(True)
@@ -58,6 +55,9 @@ def main():
         dpg.set_item_width ('Preview', main_width // 2)
         dpg.set_item_height('Preview', main_height // 3)
         dpg.set_item_pos   ('Preview', [main_width // 2, main_height // 3])
+
+        dpg.set_item_width ('preview_1', main_width // 2 - 18)
+        dpg.set_item_height('preview_1', main_height // 3 - 36)
         
         dpg.set_item_width ('Nozzle', main_width // 2)
         dpg.set_item_height('Nozzle', main_height // 3)
@@ -67,14 +67,30 @@ def main():
     settings = { 'no_move': True, 'no_collapse': True, 'no_resize': True, 'no_close': True }
 
     with dpg.window(tag='General', label='General', **settings):
-        dpg.add_input_text(label='file name')
-        dpg.add_button(label='Save', callback=save_callback)
+        dpg.add_input_text(label='Manufacturer')
+        # def save_callback():
+        #     print('Save Clicked')
+        # dpg.add_button(label='Save', callback=save_callback)
+
+        
+        # https://dearpygui.readthedocs.io/en/latest/documentation/file-directory-selector.html
+        dpg.add_file_dialog(directory_selector=True, show=False, tag="load")
+        dpg.add_file_dialog(directory_selector=True, show=False, tag="save")
+        dpg.add_file_dialog(directory_selector=True, show=False, tag="save_rse")
+        dpg.add_file_dialog(directory_selector=True, show=False, tag="save_eng")
+
+        with dpg.group(horizontal=True):
+            dpg.add_button(label="Load", callback=lambda: dpg.show_item("load"))
+            dpg.add_button(label="Save", callback=lambda: dpg.show_item("save"))
+            dpg.add_button(label="Save As", callback=lambda: dpg.show_item("save"))
+            dpg.add_button(label="Export RSE", callback=lambda: dpg.show_item("save_rse"))
+            dpg.add_button(label="Export ENG", callback=lambda: dpg.show_item("save_eng"))
 
     with dpg.window(tag='Preview', label='Preview', **settings):
         # dpg.add_text('Bottom Right Section')
         # dpg.add_simple_plot(label="Simple Plot", min_scale=-1.0, max_scale=1.0, height=300, tag="plot")
         # create plot
-        with dpg.plot(label="Line Series", height=300, width=800):
+        with dpg.plot(tag='preview_1', height=300, width=800):
             # optionally create legend
             dpg.add_plot_legend()
 
@@ -93,6 +109,18 @@ def main():
         # dpg.add_text('Top Right Section')
 
     tnk_config = {
+        'Diameter': {
+            'type': float,
+            'min': 0.0,
+            'step': 1E-3,
+            'decimal': 4,
+        },
+        'Length': {
+            'type': float,
+            'min': 0.0,
+            'step': 1E-3,
+            'decimal': 4,
+        },
         'Volume': {
             'type': float,
             'key': 'V',
@@ -102,13 +130,33 @@ def main():
             'step': 1E-4,
             'decimal': 6,
         },
-        'Injector CdA': {
+
+        # 'Injector CdA': {
+        #     'type': float,
+        #     'key': 'inj_CdA',
+        #     'min': 1E-9,
+        #     'default': 0.5 * (np.pi/4 * 0.5**2 * _in**2),
+        #     'step': 1E-6,
+        #     'decimal': 6,
+        # },
+        # 
+        'Oxidizer Temperature': {
             'type': float,
-            'key': 'inj_CdA',
-            'min': 1E-9,
-            'default': 0.5 * (np.pi/4 * 0.5**2 * _in**2),
-            'step': 1E-6,
-            'decimal': 6,
+            'key': 'T',
+            'min': 240.0, # Generously high, yet leaves room for applicabiltiy
+            'max': 309.0, # Max applicability of sat nos
+            'default': 293.0,
+            'step': 5.0,
+            'decimal': 0,
+        },
+        'Oxidizer Pressure': {
+            'type': float,
+            # 'key': 'P',
+            # 'min': 1.0,
+            # 'max': 1E+3,
+            # 'default': 293.0,
+            'step': 10.0E3,
+            'decimal': 0,
         },
         'Oxidizer Mass': {
             'type': float,
@@ -119,6 +167,15 @@ def main():
             'step': 1E-1,
             'decimal': 3,
         },
+        'Oxidizer Fill [%]': {
+            'type': float,
+            # 'key': 'm_ox',
+            'min': 1.0,
+            'max': 100.0,
+            # 'default': 14.0,
+            'step': 1E-1,
+            'decimal': 1,
+        },
         # V = (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
         # inj_CdA= 0.5 * (np.pi/4 * 0.5**2 * _in**2),
         # m_ox=14.0
@@ -126,7 +183,19 @@ def main():
     
     # TODO: add info descriptions!
     cmbr_config = {
-        'Base Volume [m^3]': {
+        'Diameter': {
+            'type': float,
+            'min': 0.0,
+            'step': 1E-3,
+            'decimal': 4,
+        },
+        'Length': {
+            'type': float,
+            'min': 0.0,
+            'step': 1E-3,
+            'decimal': 4,
+        },
+        'Volume [m^3]': {
             'type': float,
             'key': 'V0',
             'min': 0.0,
@@ -136,22 +205,6 @@ def main():
     }
     
     grain_config = {
-        'Outer diamater': {
-            'type': float,
-            'key': 'OD',
-            'min': 0.001,
-            'default': 5.0 * _in,
-            'step': 1E-3,
-            'decimal': 3,
-        },
-        'Length': {
-            'type': float,
-            'key': 'OD',
-            'min': 0.001,
-            'default': 5.0 * _ft,
-            'step': 1E-2,
-            'decimal': 3,
-        },
         'Fixed O/F ratio': {
             'type': float,
             'key': 'OF',
@@ -160,6 +213,30 @@ def main():
             'default': 5.0,
             'step': 1E-1,
             'decimal': 2,
+        },
+        'Inner diamater': {
+            'type': float,
+            # 'key': 'OD',
+            'min': 0.001,
+            'default': 2.0 * _in,
+            'step': 1E-3,
+            'decimal': 4,
+        },
+        'Outer diamater': {
+            'type': float,
+            'key': 'OD',
+            'min': 0.001,
+            'default': 5.0 * _in,
+            'step': 1E-3,
+            'decimal': 4,
+        },
+        'Length': {
+            'type': float,
+            'key': 'L',
+            'min': 0.001,
+            'default': 5.0 * _ft,
+            'step': 1E-2,
+            'decimal': 4,
         },
     }
 
@@ -190,6 +267,14 @@ def main():
             'step': 1E-3,
             'decimal': 3,
         },
+        'Throat Diameter': {
+            'type': float,
+            # 'key': None,
+            'min': 0.001,
+            # 'default': 5.0,
+            'step': 1E-3,
+            'decimal': 5,
+        },
         'Exit/Throat Area Ratio': {
             'type': float,
             'key': 'ER',
@@ -212,11 +297,29 @@ def main():
                     if 'default' in props:
                         dpg.set_value(props['uuid'], props['default'])
                     # dpg.add_text(key)
+    
+    def make_grain_window(name, part_config):
+        for key in part_config:
+            part_config[key]['uuid'] = dpg.generate_uuid()
+        with dpg.window(tag=name, label=name, **settings):
+            dpg.add_text('Geometry')
+            dpg.add_combo(label='Grain Shape', tag='select_shape', items=['Cylindrical', 'Star', 'Custom'], default_value='Cylindrical')
 
-    make_part_window('Tank', tnk_config)
-    make_part_window('Grain', grain_config)
-    make_part_window('Chamber', cmbr_config)
-    make_part_window('Nozzle', noz_config)
+            dpg.add_text('Regression')
+            dpg.add_combo(label='Rate Law', tag='select_regression', items=['Constant O/F', 'Regression Rate'], default_value='Constant O/F')
+            # show_item, hide_item
+
+            for title, props in part_config.items():
+                if props['type'] == float:
+                    decimal = props['decimal'] if 'decimal' in props else 3
+                    dpg.add_input_float(label=title, step=props['step'], format=f'%.{decimal}f', tag=props['uuid'])
+                    if 'default' in props:
+                        dpg.set_value(props['uuid'], props['default'])
+
+    make_part_window ('Tank',    tnk_config)
+    make_grain_window('Grain',   grain_config)
+    make_part_window ('Chamber', cmbr_config)
+    make_part_window ('Nozzle',  noz_config)
     part_configs = { 'cmbr': cmbr_config, 'noz': noz_config, 'tnk': tnk_config, 'grn': grain_config }
 
 
@@ -299,6 +402,7 @@ def main():
     # dpg.add_slider_float(label='float')
 
     dpg.show_viewport()
+    resize_windows()
 
     _unpack_engine = jax.jit(partial(core.unpack_engine, method=method))
 
@@ -318,19 +422,22 @@ def main():
                     dpg.set_value(props['uuid'], props['max'])
             
             for value_config in part_config.values():
-                # print('set', part_name+'_'+value_config['key'], s[part_name+'_'+value_config['key']], '->', dpg.get_value(value_config['uuid']))
-                k = part_name+'_'+value_config['key']
-                v = dpg.get_value(value_config['uuid'])
-                if k in s:
-                    if s[k] != v:
-                        s[k] = v
-                        upd_due = True
-                elif k in method['xmap']:
-                    if x[method['xmap'][k]] != v:
-                        x = x.at[method['xmap'][k]].set(v)
-                        upd_due = True
-                else:
-                    print('ERROR:', k, 'is nowhere!')
+                if 'key' in value_config:
+                    # print('set', part_name+'_'+value_config['key'], s[part_name+'_'+value_config['key']], '->', dpg.get_value(value_config['uuid']))
+                    k = part_name+'_'+value_config['key']
+                    v = dpg.get_value(value_config['uuid'])
+                    if k in s:
+                        if s[k] != v:
+                            s[k] = v
+                            upd_due = True
+                            print('update due to s', k)
+                    elif k in method['xmap']:
+                        if x[method['xmap'][k]] != v:
+                            print('update due to x', k)
+                            x = x.at[method['xmap'][k]].set(v)
+                            upd_due = True
+                    else:
+                        print('ERROR:', k, 'is nowhere!')
         # t2 = time.time()
         # print('v check took', t2-t1)
         

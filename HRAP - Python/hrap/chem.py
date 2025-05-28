@@ -10,23 +10,16 @@
 
 
 
-# from typing import Dict
-
-
-
 # Terminlogy explanations:
 # Mixture - reaction products
 
 # Unit explanations:
-# n_j - kmol of species j per kg of mixture
 # s - specific entropy
 # S - molar entropy
 # h - specific enthalpy
 # H - molar enthalpy
 # g - Gibbs energy per kg of mixture
 # mu_j - chemical potential per kmol of species j
-# M - molecular weight
-# DeltaHForm - enthalpy of formation
 
 # Extension explanations:
 # _0 - fixed/initial value
@@ -53,19 +46,19 @@ class NASA9(object):
     dho: float # Formation enthalpy
     coeffs: list[float] # 9 coefficients
     
-    # Nondimensionalized as Cp/Rhat
+    # Nondimensionalized specific heat, Cp/Rhat
     def get_Cp_D(self, T):
         return self.coeffs[0]/(T*T) + self.coeffs[1]/T   + self.coeffs[2]      +
                self.coeffs[3]*T     + self.coeffs[4]*T*T + self.coeffs[5]*T**2 +
                self.coeffs[6]*T**4
     
-    # Nondimensionalized as H/(Rhat*T)
+    # Nondimensionalized specific enthalpy, H/(Rhat*T)
     def get_H_D(self, T):
          return -self.coeffs[0]/(T*T)    + self.coeffs[1]/T*jnp.log(T) + self.coeffs[2]          +
                  self.coeffs[3]*T/2.0    + self.coeffs[4]*T*T/3.0      + self.coeffs[5]*T**3/4.0 +
                  self.coeffs[6]*T**4/5.0 + self.coeffs[7]/T
 
-    # Nondimensionalized as S/Rhat
+    # Nondimensionalized specific entropy, S/Rhat
     def get_S_D(self, T):
         return -self.coeffs[0]/(2.0*T*T) - self.coeffs[1]/T       + self.coeffs[2]*jnp.log(T) +
                 self.coeffs[3]*T         + self.coeffs[4]*T*T/2.0 + self.coeffs[5]*T**3/3.0   +
@@ -86,7 +79,7 @@ class ThermoSubstance(object):
     T_min: float # Range where the substance is allowed to be used (may be a single point, may contain error margin past where it is defined)
     T_max: float
 
-    def get_R(self): # J/(K*kg)
+    def get_R(self): # J/(K*kg), specific gas constant
         return Rhat / self.M
     
     def get_prov(self, T):
@@ -295,7 +288,7 @@ class ChemSolver:
 
         P: float # Pa, constant pressure
         h_0: float # input enthalpy
-        n: float
+        n: float # kmol/kg, inverse molar mass of mixture
         T: float # K, current temperature
         Deltaln_n: float
         Deltaln_T: float
@@ -304,7 +297,7 @@ class ChemSolver:
         b_i0: np.ndarray # used to keep the elemental mass density balance identical to the inputs
         b_i0_max: float # (N_elem)
         pi_i: np.ndarray
-        n_j: np.ndarray # (N_subs)
+        n_j: np.ndarray # (N_subs), kmol of species j per kg of mixture
         Deltan_j: np.ndarray # (N_cond)
         Deltan_j_gas: np.ndarray # (N_gas)
 
@@ -549,7 +542,7 @@ class ChemSolver:
         for j in range(x.N_gas, x.N_sub): if x.n_j[j] > 1.0E-7:
             M[x.subs_I[j], N_elem+(j-x.N_gas)] += x.subs_a[j] # a_ij
             dT[x.N_elem+(j-x.N_gas)] += -x.subs[j].get_H_D(x.T) # -H_jstd/(R*T)
-            # dP = 0 due to incompressible
+            # Note dP = 0 due to incompressible
         # Singular equation
         for j in range(x.N_gas): if x.n_j[j] > 1.0E-7:
             M[x.subs_I[j], -1] += x.n_j[j] * np.sum(x.subs_a[j]) # a_ij*n_j
