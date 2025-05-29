@@ -98,6 +98,14 @@ class ThermoSubstance(object):
     def get_S_D(self, T):
         return self.get_prov(T).get_S_D(T)
 
+def make_basic_reactant(formula: str, composition: dict, M: float, T0: float, h0: float, condensed = True) -> ThermoSubstance:
+    """
+    kg/kmol
+    K
+    J/mol
+    """
+    return ThermoSubstance(formula, '', condensed, False, { k.upper(): v for k, v in composition.items() }, M, [NASA9(0.9*T0, 1.1*T0, h0, [0.0]*2+[h0/Rhat/T0]+[0.0]*5)], 0.9*T0, 1.1*T0)
+
 @dataclass
 class ChemSolver:
     substances: list[ThermoSubstance]

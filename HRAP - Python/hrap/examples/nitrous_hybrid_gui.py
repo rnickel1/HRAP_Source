@@ -20,6 +20,9 @@ from hrap.nozzle  import *
 from hrap.sat_nos import *
 from hrap.units   import _in, _ft
 
+from hrap.sat_nos import get_sat_nos_props
+get_sat_props = get_sat_nos_props
+
 def main():
     jax.config.update("jax_enable_x64", True)
     
@@ -100,35 +103,95 @@ def main():
 
             # series belong to a y axis
             dpg.add_line_series([], [], label="Trust", parent="y_axis", tag="series_tag")
-
-
-    # with dpg.window(tag='Tank', label='Tank', **settings):
-        # dpg.add_text('Top Right Section')
-
-    # with dpg.window(tag='Grain', label='Grain', **settings):
-        # dpg.add_text('Top Right Section')
-
+    
+    params = { }
+    def set_param(tag, val):
+        props = params[tag]
+        if 'min' in props and val < props['min']:
+            dpg.set_value(tag, props['min'])
+        elif 'max' in props and val > props['max']:
+            dpg.set_value(tag, props['max'])
+        else:
+            dpg.set_value(tag, float(val))
+    
+    # Callbacks for manual adjustments (gets sets the UI components, not the motor)
+    def man_call_ox_D():
+        D, L, T, fill = [dpg.get_value(tag) for tag in ['ox_D', 'ox_L', 'ox_T', 'ox_fill']]
+        props = get_sat_props(T)
+        V = np.pi/4 * D**2 * L
+        set_param('ox_V', V)
+        set_param('ox_m', fill/100.0 * props['rho_l'] * V)
+        
+    man_call_ox_L = man_call_ox_D
+    
+    def man_call_ox_V():
+        V, D, T, fill = [dpg.get_value(tag) for tag in ['ox_V', 'ox_D', 'ox_T', 'ox_fill']]
+        props = get_sat_props(T)
+        set_param('ox_L', V / (np.pi/4 * D**2))
+        set_param('ox_m', fill/100.0 * props['rho_l'] * V)
+    
+    def man_call_ox_T():
+        T, V, fill = [dpg.get_value(tag) for tag in ['ox_T', 'ox_V', 'ox_fill']]
+        props = get_sat_props(T)
+        set_param('ox_P', props['Pv'])
+        set_param('ox_m', fill/100.0 * props['rho_l'] * V)
+    
+    def man_call_ox_P():
+        pass
+    
+    def man_call_ox_m():
+        T, V, m = [dpg.get_value(tag) for tag in ['ox_T', 'ox_V', 'ox_m']]
+        props = get_sat_props(T)
+        set_param('ox_fill', 100.0 * m / (props['rho_l'] * V))
+    
+    def man_call_ox_fill():
+        T, V, fill = [dpg.get_value(tag) for tag in ['ox_T', 'ox_V', 'ox_fill']]
+        props = get_sat_props(T)
+        set_param('ox_m', fill/100.0 * props['rho_l'] * V)
+    
+    def man_call_noz_D_exit():
+        D_throat, D_exit = [dpg.get_value(tag) for tag in ['noz_throat', 'noz_exit']]
+        set_param('noz_AR', D_exit**2/D_throat**2)
+    
+    def man_call_noz_AR():
+        D_AR, D_throat = [dpg.get_value(tag) for tag in ['noz_AR', 'noz_throat']]
+        set_param('noz_exit', np.sqrt(D_AR * D_throat**2))
+    
+    def init_deps(): # Called after load, just set 
+        man_call_ox_D()
+        man_call_ox_T()
+        # man_call_ox_m()
+        man_call_noz_AR()
+    
     tnk_config = {
-        'Diameter': {
+        'Inner Diameter': {
             'type': float,
+            'tag': 'ox_D',
             'min': 0.0,
+            'default': 4.75 * _in,
             'step': 1E-3,
             'decimal': 4,
+            'man_call': man_call_ox_D,
         },
         'Length': {
             'type': float,
+            'tag': 'ox_L',
             'min': 0.0,
-            'step': 1E-3,
+            'default': 7 * _ft,
+            'step': 1E-2,
             'decimal': 4,
+            'man_call': man_call_ox_L,
         },
         'Volume': {
             'type': float,
+            'tag': 'ox_V',
             'key': 'V',
             'min': 1E-9,
             'max': 1.0,
-            'default': (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
+            # 'default': (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
             'step': 1E-4,
             'decimal': 6,
+            'man_call': man_call_ox_V,
         },
 
         # 'Injector CdA': {
@@ -142,39 +205,47 @@ def main():
         # 
         'Oxidizer Temperature': {
             'type': float,
+            'tag': 'ox_T',
             'key': 'T',
             'min': 240.0, # Generously high, yet leaves room for applicabiltiy
-            'max': 309.0, # Max applicability of sat nos
+            'max': 305.0, # 309 is max applicability of sat nos
             'default': 293.0,
-            'step': 5.0,
+            'step': 1.0,
             'decimal': 0,
+            'man_call': man_call_ox_T,
         },
         'Oxidizer Pressure': {
             'type': float,
+            'tag': 'ox_P',
             # 'key': 'P',
             # 'min': 1.0,
             # 'max': 1E+3,
             # 'default': 293.0,
             'step': 10.0E3,
             'decimal': 0,
+            'man_call': man_call_ox_P,
         },
         'Oxidizer Mass': {
             'type': float,
+            'tag': 'ox_m', # TODO ..., actually change below
             'key': 'm_ox',
             'min': 1E-3,
             'max': 1E+3,
-            'default': 14.0,
+            # 'default': 14.0,
             'step': 1E-1,
             'decimal': 3,
+            'man_call': man_call_ox_m,
         },
         'Oxidizer Fill [%]': {
             'type': float,
+            'tag': 'ox_fill',
             # 'key': 'm_ox',
             'min': 1.0,
             'max': 100.0,
-            # 'default': 14.0,
-            'step': 1E-1,
+            'default': 70.0,
+            'step': 5E-1,
             'decimal': 1,
+            'man_call': man_call_ox_fill,
         },
         # V = (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
         # inj_CdA= 0.5 * (np.pi/4 * 0.5**2 * _in**2),
@@ -183,18 +254,18 @@ def main():
     
     # TODO: add info descriptions!
     cmbr_config = {
-        'Diameter': {
-            'type': float,
-            'min': 0.0,
-            'step': 1E-3,
-            'decimal': 4,
-        },
-        'Length': {
-            'type': float,
-            'min': 0.0,
-            'step': 1E-3,
-            'decimal': 4,
-        },
+        # 'Diameter': {
+            # 'type': float,
+            # 'min': 0.0,
+            # 'step': 1E-3,
+            # 'decimal': 4,
+        # },
+        # 'Length': {
+            # 'type': float,
+            # 'min': 0.0,
+            # 'step': 1E-3,
+            # 'decimal': 4,
+        # },
         'Volume [m^3]': {
             'type': float,
             'key': 'V0',
@@ -202,6 +273,15 @@ def main():
             'step': 1E-4,
             'decimal': 6,
         },
+        'C* Efficiency': {
+            'type': float,
+            'key': 'cstar_eff',
+            'min': 0.01,
+            'max': 1.0,
+            'default': 0.95,
+            'step': 1E-2,
+            'decimal': 2,
+        }
     }
     
     grain_config = {
@@ -261,39 +341,50 @@ def main():
         },
         'Throat Diameter [m]': {
             'type': float,
+            'tag': 'noz_throat',
             'key': 'thrt',
             'min': 0.001,
             'default': 1.5 * _in,
             'step': 1E-3,
             'decimal': 3,
         },
-        'Throat Diameter': {
+        'Exit Diameter': {
             'type': float,
+            'tag': 'noz_exit',
             # 'key': None,
             'min': 0.001,
             # 'default': 5.0,
             'step': 1E-3,
             'decimal': 5,
+            'man_call': man_call_noz_D_exit,
         },
         'Exit/Throat Area Ratio': {
             'type': float,
+            'tag': 'noz_AR',
             'key': 'ER',
             'min': 1.001,
             'default': 5.0,
             'step': 1E-1,
             'decimal': 3,
+            'man_call': man_call_noz_AR,
         },
+        # TODO: atm pressure, button to optimize (based on ss, mid liq?)!
     }
 
     def make_part_window(name, part_config):
         for key in part_config:
-            part_config[key]['uuid'] = dpg.generate_uuid()
+            if 'tag' in part_config[key]:
+                part_config[key]['uuid'] = part_config[key]['tag']
+                params[part_config[key]['tag']] = part_config[key]
+            else:
+                part_config[key]['uuid'] = dpg.generate_uuid() # TODO just tag
         # print(name)
         with dpg.window(tag=name, label=name, **settings):
             for title, props in part_config.items():
                 if props['type'] == float:
                     decimal = props['decimal'] if 'decimal' in props else 3
-                    dpg.add_input_float(label=title, step=props['step'], format=f'%.{decimal}f', tag=props['uuid'])
+                    callback = props['man_call'] if 'man_call' in props else None
+                    dpg.add_input_float(label=title, step=props['step'], format=f'%.{decimal}f', tag=props['uuid'], callback=callback)
                     if 'default' in props:
                         dpg.set_value(props['uuid'], props['default'])
                     # dpg.add_text(key)
@@ -321,6 +412,8 @@ def main():
     make_part_window ('Chamber', cmbr_config)
     make_part_window ('Nozzle',  noz_config)
     part_configs = { 'cmbr': cmbr_config, 'noz': noz_config, 'tnk': tnk_config, 'grn': grain_config }
+    
+    init_deps()
 
 
     # with dpg.window(tag='Nozzle', label='Nozzle', **settings):
@@ -410,6 +503,7 @@ def main():
     fps_i = 0
     while dpg.is_dearpygui_running():
         wall_t = time.time()
+        print('begin')
         
         # t1 = time.time()
         # TODO: can be done in callbacks?
@@ -450,8 +544,13 @@ def main():
         
             T = 10.0
             t10 = time.time()
-            t, x1, xstack = fire_engine(s, x, dt=1E-3, T=T)
+            # print('run 1')
+            # t, x1, xstack = fire_engine(s, x, dt=1E-3, T=T)
+            _, _, xstack = fire_engine(s, x, dt=1E-3, T=T)
+            # print('run 2')
             jax.block_until_ready(xstack)
+            xstack = np.copy(xstack)
+            # print('run 3')
             # tnk, grn, cmbr, noz = _unpack_engine(s, xstack)
             
             N_t = xstack.shape[0]
@@ -460,15 +559,18 @@ def main():
             thrust = xstack[:,method['xmap']['noz_thrust']]
             # print(t.shape) # What happened to arr?
             # dpg.set_value('series_tag', [np.asarray(t[::10]), np.asarray(thrust[::10])])
-            dpg.set_value('series_tag', [np.linspace(0.0, T, N_t//10), np.asarray(thrust[::10])])
+            dpg.set_value('series_tag', [np.linspace(0.0, T, N_t//10), np.copy(thrust[::10])])
             print('max engine fps', 1/(t2-t10))
             # dpg.set_value('series_tag', [np.linspace(0.0, T, N_t), np.asarray(noz['thrust'])])
 
+        print('render')
         dpg.render_dearpygui_frame()
+        print('finish')
         
         wall_t_end = time.time()
         extra_time = frame_wall_dT - (wall_t_end - wall_t)
         if extra_time > 0.0:
+            print('sleep for', extra_time, frame_wall_dT, wall_t_end, wall_t)
             time.sleep(extra_time)
 
         # TODO: show on frame somewhere, or use dpg.get_frame_rate()

@@ -66,7 +66,7 @@ plastisol = chem.make_basic_reactant(
     h0 = -265357.55, # J/mol
 )
 
-chem.ChemSolver(['./', plastisol])
+chem.ChemSolver(['./ssts_thermochem.txt', plastisol])
 
 
 
