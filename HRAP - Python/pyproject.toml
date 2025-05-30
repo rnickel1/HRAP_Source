@@ -14,6 +14,7 @@ dependencies = [
     "numpy",
 	"scipy",
 	"dearpygui",
+	"dearpygui_ext",
 ]
 
 requires-python = ">= 3.10"
