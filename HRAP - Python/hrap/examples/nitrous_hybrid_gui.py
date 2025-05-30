@@ -4,6 +4,8 @@ import sys
 import time
 from pathlib import Path
 import pickle as pkl
+from importlib.resources import files as imp_files
+from importlib.metadata import version
 
 import scipy
 import numpy as np
@@ -26,6 +28,8 @@ from dearpygui_ext.themes import create_theme_imgui_light, create_theme_imgui_da
 from hrap.sat_nos import get_sat_nos_props
 get_sat_props = get_sat_nos_props
 
+hrap_version = version('hrap')
+
 # Virtualized Python environments may redirect these to other locations
 # Note that Windows Store Python redirects this to %APPDATA%\Local\Packages\PythonSoftwareFoundation.Python.[some garbage]\LocalCache\Roaming
 def get_datadir() -> Path:
@@ -37,16 +41,23 @@ def get_datadir() -> Path:
     elif sys.platform == 'darwin':
         return home / 'Library/Application Support'
 
+# Global vars, issues unless declared outside of main
+active_file = None
+
 def main():
-    jax.config.update("jax_enable_x64", True)
+    print('beginning w/ hrap version', hrap_version)
+    jax.config.update('jax_enable_x64', True)
     
     # Ensure the app data directory for hrap exists
     data_root = get_datadir()/'hrap'
     Path(data_root).mkdir(parents=True, exist_ok=True)
     print('app data will go in', os.path.realpath(data_root))
+
+    # Ensure the autosave directory exists
+    auto_root = data_root/'autosaves'
+    Path(auto_root).mkdir(parents=True, exist_ok=True)
     
     # Get the HRAP install root
-    from importlib.resources import files as imp_files
     hrap_root = Path(imp_files('hrap'))
     
     def apply_theme(theme, save):
@@ -56,15 +67,28 @@ def main():
         dpg.bind_font(0) # dpg won't apply a new font unless go back to default first
         dpg.bind_font(babber_font if theme == 'Yellow Babber' else primary_font)
     
-    def apply_theme_callback(sender, app_data, user_data):
-        apply_theme(user_data, True)
-    
     def save_settings(settings):
-         pkl.dump(settings, open(data_root/'settings.pkl', 'wb'))
+        pkl.dump(settings, open(data_root/'settings.pkl', 'wb'))
+    
+    def save_config(file):
+        save, save_config = { }, { }
+        for tag in config:
+            save_config[tag] = dpg.get_value(tag)
+        save['hrap_version'] = hrap_version
+        save['config'] = save_config
+        print(save)
+        pkl.dump(save, open(file, 'wb'))
+
+    def load_config(file):
+        save = pkl.load(open(file, 'rb'))
+        save_config = save['config']
+        for tag, val in save['config'].items():
+            set_param(tag, val)
+        init_deps()
     
     default_settings = {
-        'window_width': 1000,
-        'window_height': 1000*6//8,
+        'view_w': 1000, 'view_h': 1000*6//8,
+        'view_x': 0, 'view_y': 0,
         'theme': 'Dark',
     }
     try:
@@ -82,7 +106,7 @@ def main():
     # See https://github.com/hoffstadt/DearPyGui
 
     dpg.create_context()
-    dpg.create_viewport(title='HRAP', width=settings['window_width'], height=settings['window_height']) # small_icon='a.ico', large_icon='\a.ico'
+    dpg.create_viewport(title='HRAP', width=settings['view_w'], height=settings['view_h'], x_pos=settings['view_x'], y_pos=settings['view_y']) # small_icon='a.ico', large_icon='\a.ico'
     dpg.setup_dearpygui()
     dpg.set_viewport_vsync(False)
 
@@ -94,11 +118,8 @@ def main():
     with dpg.font_registry():
         primary_font = dpg.add_font(hrap_root/'resources'/'fonts'/'Roboto-Regular.ttf', 14)
         babber_font  = dpg.add_font(hrap_root/'resources'/'fonts'/'BubblegumSans-Regular.ttf', 14)
-    dpg.bind_font(primary_font)
-    
-    # print(settings['theme'])
+
     apply_theme(settings['theme'], False)
-    # exit()
     
     
 
@@ -107,45 +128,47 @@ def main():
     # TODO: use that this also gets called on move to set intial pos
     def resize_windows():
         # Get the size of the main window
-        main_width, main_height = dpg.get_viewport_client_width(), dpg.get_viewport_client_height()
+        view_w, view_h = dpg.get_viewport_client_width(), dpg.get_viewport_client_height()
+        view_x, view_y = dpg.get_viewport_pos()
         menu_height = 20
         
-        settings['window_width'] = main_width; settings['window_height'] = main_height
+        settings['view_w'] = view_w; settings['view_h'] = view_h
+        settings['view_x'] = view_x; settings['view_y'] = view_y
         save_settings(settings)
 
         # Update the size and position of each window based on the main window's size
-        dpg.set_item_width ('menu', main_width)
+        dpg.set_item_width ('menu', view_w)
         # dpg.set_item_height('menu', menu_height)
         
-        dpg.set_item_width ('Tank', main_width // 2)
-        dpg.set_item_height('Tank', main_height // 3 - menu_height)
+        dpg.set_item_width ('Tank', view_w // 2)
+        dpg.set_item_height('Tank', view_h // 3 - menu_height)
         dpg.set_item_pos   ('Tank', [0, menu_height])
 
-        dpg.set_item_width ('Grain', main_width // 2)
-        dpg.set_item_height('Grain', main_height // 3)
-        dpg.set_item_pos   ('Grain', [0, main_height // 3])
+        dpg.set_item_width ('Grain', view_w // 2)
+        dpg.set_item_height('Grain', view_h // 3)
+        dpg.set_item_pos   ('Grain', [0, view_h // 3])
         
-        dpg.set_item_width ('Chamber', main_width // 2)
-        dpg.set_item_height('Chamber', main_height // 3)
-        dpg.set_item_pos   ('Chamber', [0, 2 * main_height // 3])
+        dpg.set_item_width ('Chamber', view_w // 2)
+        dpg.set_item_height('Chamber', view_h // 3)
+        dpg.set_item_pos   ('Chamber', [0, 2 * view_h // 3])
 
-        dpg.set_item_width ('Preview', main_width // 2)
-        dpg.set_item_height('Preview', main_height // 3)
-        dpg.set_item_pos   ('Preview', [main_width // 2, main_height // 3])
+        dpg.set_item_width ('Preview', view_w // 2)
+        dpg.set_item_height('Preview', view_h // 3)
+        dpg.set_item_pos   ('Preview', [view_w // 2, view_h // 3])
 
-        dpg.set_item_width ('preview_1', main_width // 2 - 18)
-        dpg.set_item_height('preview_1', main_height // 3 - 36)
+        dpg.set_item_width ('preview_1', view_w // 2 - 18)
+        dpg.set_item_height('preview_1', view_h // 3 - 36)
         
-        dpg.set_item_width ('Nozzle', main_width // 2)
-        dpg.set_item_height('Nozzle', main_height // 3)
-        dpg.set_item_pos   ('Nozzle', [main_width // 2, 2 * main_height // 3])
+        dpg.set_item_width ('Nozzle', view_w // 2)
+        dpg.set_item_height('Nozzle', view_h // 3)
+        dpg.set_item_pos   ('Nozzle', [view_w // 2, 2 * view_h // 3])
 
     # First row
     settings = { 'no_move': True, 'no_collapse': True, 'no_resize': True, 'no_close': True }
     
-    params = { }
+    config = { }
     def set_param(tag, val):
-        props = params[tag]
+        props = config[tag]
         if 'min' in props and val < props['min']:
             dpg.set_value(tag, props['min'])
         elif 'max' in props and val > props['max']:
@@ -160,7 +183,7 @@ def main():
         V = np.pi/4 * D**2 * L
         set_param('ox_V', V)
         set_param('ox_m', fill/100.0 * props['rho_l'] * V)
-        
+    
     man_call_ox_L = man_call_ox_D
     
     def man_call_ox_V():
@@ -196,12 +219,12 @@ def main():
         D_AR, D_throat = [dpg.get_value(tag) for tag in ['noz_AR', 'noz_throat']]
         set_param('noz_exit', np.sqrt(D_AR * D_throat**2))
     
-    def init_deps(): # Called after load, just set 
+    def init_deps(): # Called after init/load to verify consistency
         man_call_ox_D()
         man_call_ox_T()
         # man_call_ox_m()
         man_call_noz_AR()
-    
+
     tnk_config = {
         'Inner Diameter': {
             'type': float,
@@ -414,7 +437,7 @@ def main():
         for key in part_config:
             if 'tag' in part_config[key]:
                 part_config[key]['uuid'] = part_config[key]['tag']
-                params[part_config[key]['tag']] = part_config[key]
+                config[part_config[key]['tag']] = part_config[key]
             else:
                 part_config[key]['uuid'] = dpg.generate_uuid() # TODO just tag
         # print(name)
@@ -446,39 +469,80 @@ def main():
                     if 'default' in props:
                         dpg.set_value(props['uuid'], props['default'])
     
+    def save_callback():
+        print('saving', active_file)
+        if active_file == None: # Save as
+            dpg.show_item('save_as')
+        else:
+            save_config(active_file)
+    
+    def load_callback(sender, app_data):
+        global active_file
+        active_file = Path(app_data['file_path_name'])
+        if active_file.exists():
+            print('Loading', active_file)
+            load_config(active_file)
+        else:
+            active_file = None
+            print('Loaded file doesnt exist!')
+
+    def save_as_callback(sender, app_data):
+        global active_file
+        active_file = Path(app_data['file_path_name'])
+        print('saving as', active_file)
+        save_config(active_file)
+        # print('save as', app_data)
+
+    def key_press_handler(sender, app_data):
+        global active_file
+        if dpg.is_key_down(dpg.mvKey_LControl) and app_data == dpg.mvKey_S:
+            if dpg.is_key_down(dpg.mvKey_LShift): active_file = None # Save as
+            save_callback()
+    with dpg.handler_registry():
+        dpg.add_key_press_handler(callback=key_press_handler)
+    
     with dpg.window(label='menu', tag='menu', no_title_bar=True, menubar=True, no_bring_to_front_on_focus=True, **settings):
-        dpg.add_file_dialog(directory_selector=True, show=False, tag="load")
-        dpg.add_file_dialog(directory_selector=True, show=False, tag="save")
-        dpg.add_file_dialog(directory_selector=True, show=False, tag="save_rse")
-        dpg.add_file_dialog(directory_selector=True, show=False, tag="save_eng")
+        with dpg.file_dialog(tag='load', default_filename='', directory_selector=False, show=False, width=700, height=400, callback=load_callback):
+            dpg.add_file_extension('.hrap')
+        with dpg.file_dialog(tag='save_as', default_filename='', directory_selector=False, show=False, width=700 ,height=400, callback=save_as_callback):
+            dpg.add_file_extension('.hrap')
+            # with dpg.child_window(height=100):
+            #     dpg.add_selectable(label='bookmark 1')
+            #     dpg.add_selectable(label='bookmark 2')
+            #     dpg.add_selectable(label='bookmark 3')
+        with dpg.file_dialog(tag='save_rse', default_filename='', directory_selector=False, show=False, width=700 ,height=400):
+            dpg.add_file_extension('.rse')
+        with dpg.file_dialog(tag='save_eng', default_filename='', directory_selector=False, show=False, width=700 ,height=400):
+            dpg.add_file_extension('.eng')
         
         with dpg.menu_bar():
-            with dpg.menu(label="File"):
+            with dpg.menu(label='File'):
                 # https://dearpygui.readthedocs.io/en/latest/documentation/file-directory-selector.html
-                dpg.add_menu_item(label="Load",       callback=lambda: dpg.show_item("load"))
-                dpg.add_menu_item(label="Save",       callback=lambda: dpg.show_item("save"))
-                dpg.add_menu_item(label="Save As",    callback=lambda: dpg.show_item("save"))
-                dpg.add_menu_item(label="Export RSE", callback=lambda: dpg.show_item("save_rse"))
-                dpg.add_menu_item(label="Export ENG", callback=lambda: dpg.show_item("save_eng"))
-            with dpg.menu(label="Config"):
+                dpg.add_menu_item(label='Load',       callback=lambda: dpg.show_item('load'))
+                dpg.add_menu_item(label='Save',       callback=lambda: save_callback())
+                dpg.add_menu_item(label='Save As',    callback=lambda: dpg.show_item('save_as'))
+                dpg.add_menu_item(label='Export RSE', callback=lambda: dpg.show_item('save_rse'))
+                dpg.add_menu_item(label='Export ENG', callback=lambda: dpg.show_item('save_eng'))
+            with dpg.menu(label='Config'):
                 dpg.add_input_text(label='Manufacturer')
-            with dpg.menu(label="Theme"):
+            with dpg.menu(label='Theme'):
+                def apply_theme_callback(sender, app_data, user_data): apply_theme(user_data, True)
                 for theme in themes: dpg.add_menu_item(label=theme, callback=apply_theme_callback, user_data=theme)
         
         with dpg.window(tag='Preview', label='Preview', **settings):
             # dpg.add_text('Bottom Right Section')
-            # dpg.add_simple_plot(label="Simple Plot", min_scale=-1.0, max_scale=1.0, height=300, tag="plot")
+            # dpg.add_simple_plot(label='Simple Plot', min_scale=-1.0, max_scale=1.0, height=300, tag='plot')
             # create plot
             with dpg.plot(tag='preview_1', height=300, width=800):
                 # optionally create legend
                 dpg.add_plot_legend()
 
                 # REQUIRED: create x and y axes
-                dpg.add_plot_axis(dpg.mvXAxis, label="t (s)")
-                dpg.add_plot_axis(dpg.mvYAxis, label="Thrust (N)", tag="y_axis")
+                dpg.add_plot_axis(dpg.mvXAxis, label='t (s)')
+                dpg.add_plot_axis(dpg.mvYAxis, label='Thrust (N)', tag='y_axis')
 
                 # series belong to a y axis
-                dpg.add_line_series([], [], label="Trust", parent="y_axis", tag="series_tag")
+                dpg.add_line_series([], [], label='Trust', parent='y_axis', tag='series_tag')
         
         make_part_window ('Tank',    tnk_config)
         make_grain_window('Grain',   grain_config)
@@ -576,7 +640,7 @@ def main():
     fps_i = 0
     while dpg.is_dearpygui_running():
         wall_t = time.time()
-        print('begin')
+        # print('begin')
         
         # t1 = time.time()
         # TODO: can be done in callbacks?
@@ -636,14 +700,14 @@ def main():
             print('max engine fps', 1/(t2-t10))
             # dpg.set_value('series_tag', [np.linspace(0.0, T, N_t), np.asarray(noz['thrust'])])
 
-        print('render')
+        # print('render')
         dpg.render_dearpygui_frame()
-        print('finish')
+        # print('finish')
         
         wall_t_end = time.time()
         extra_time = frame_wall_dT - (wall_t_end - wall_t)
         if extra_time > 0.0:
-            print('sleep for', extra_time, frame_wall_dT, wall_t_end, wall_t)
+            # print('sleep for', extra_time, frame_wall_dT, wall_t_end, wall_t)
             time.sleep(extra_time)
 
         # TODO: show on frame somewhere, or use dpg.get_frame_rate()
