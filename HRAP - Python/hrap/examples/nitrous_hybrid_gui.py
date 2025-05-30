@@ -1,12 +1,12 @@
+import os
 import sys
-sys.path.insert(1, '../HRAP/')
+# sys.path.insert(1, '../HRAP/')
 import time
+from pathlib import Path
+import pickle as pkl
 
 import scipy
 import numpy as np
-from pathlib import Path
-
-# import matplotlib.pyplot as plt
 
 import dearpygui.dearpygui as dpg
 
@@ -20,28 +20,106 @@ from hrap.nozzle  import *
 from hrap.sat_nos import *
 from hrap.units   import _in, _ft
 
+from hrap.examples.gui_themes import create_babber_theme
+from dearpygui_ext.themes import create_theme_imgui_light, create_theme_imgui_dark
+
 from hrap.sat_nos import get_sat_nos_props
 get_sat_props = get_sat_nos_props
+
+# Virtualized Python environments may redirect these to other locations
+# Note that Windows Store Python redirects this to %APPDATA%\Local\Packages\PythonSoftwareFoundation.Python.[some garbage]\LocalCache\Roaming
+def get_datadir() -> Path:
+    home = Path.home()
+    if sys.platform == 'win32':
+        return home / 'AppData/Roaming'
+    elif sys.platform == 'linux':
+        return home / '.local/share'
+    elif sys.platform == 'darwin':
+        return home / 'Library/Application Support'
 
 def main():
     jax.config.update("jax_enable_x64", True)
     
+    # Ensure the app data directory for hrap exists
+    data_root = get_datadir()/'hrap'
+    Path(data_root).mkdir(parents=True, exist_ok=True)
+    print('app data will go in', os.path.realpath(data_root))
+    
+    # Get the HRAP install root
+    from importlib.resources import files as imp_files
+    hrap_root = Path(imp_files('hrap'))
+    
+    def apply_theme(theme, save):
+        settings['theme'] = theme
+        if save: save_settings(settings)
+        dpg.bind_theme(themes[theme])
+        dpg.bind_font(0) # dpg won't apply a new font unless go back to default first
+        dpg.bind_font(babber_font if theme == 'Yellow Babber' else primary_font)
+    
+    def apply_theme_callback(sender, app_data, user_data):
+        apply_theme(user_data, True)
+    
+    def save_settings(settings):
+         pkl.dump(settings, open(data_root/'settings.pkl', 'wb'))
+    
+    default_settings = {
+        'window_width': 1000,
+        'window_height': 1000*6//8,
+        'theme': 'Dark',
+    }
+    try:
+        settings = pkl.load(open(data_root/'settings.pkl', 'rb'))
+        # Add in any missing settings (such as added from version changes)
+        for k, v in default_settings.items():
+            if not k in settings:
+                print('Settings was missing', k, 'defaulting to', v)
+                settings[k] = v
+    except FileNotFoundError:
+        print('Settings not found, initializing...')
+        settings = default_settings
+    save_settings(settings)
+    
     # See https://github.com/hoffstadt/DearPyGui
 
     dpg.create_context()
-    dpg.create_viewport(title='HRAP', width=800, height=600) # small_icon='a.ico', large_icon='\a.ico'
+    dpg.create_viewport(title='HRAP', width=settings['window_width'], height=settings['window_height']) # small_icon='a.ico', large_icon='\a.ico'
     dpg.setup_dearpygui()
     dpg.set_viewport_vsync(False)
+
+    dark_theme   = create_theme_imgui_dark()
+    light_theme  = create_theme_imgui_light()
+    babber_theme = create_babber_theme()
+    themes = { 'Dark': 0, 'Light': light_theme, 'Extra Dark': dark_theme, 'Yellow Babber': babber_theme }
+    
+    with dpg.font_registry():
+        primary_font = dpg.add_font(hrap_root/'resources'/'fonts'/'Roboto-Regular.ttf', 14)
+        babber_font  = dpg.add_font(hrap_root/'resources'/'fonts'/'BubblegumSans-Regular.ttf', 14)
+    dpg.bind_font(primary_font)
+    
+    # print(settings['theme'])
+    apply_theme(settings['theme'], False)
+    # exit()
+    
+    
+
     # dpg.set_viewport_vsync(True)
 
+    # TODO: use that this also gets called on move to set intial pos
     def resize_windows():
         # Get the size of the main window
         main_width, main_height = dpg.get_viewport_client_width(), dpg.get_viewport_client_height()
+        menu_height = 20
+        
+        settings['window_width'] = main_width; settings['window_height'] = main_height
+        save_settings(settings)
 
         # Update the size and position of each window based on the main window's size
+        dpg.set_item_width ('menu', main_width)
+        # dpg.set_item_height('menu', menu_height)
+        
         dpg.set_item_width ('Tank', main_width // 2)
-        dpg.set_item_height('Tank', main_height // 3)
-        dpg.set_item_pos   ('Tank', [0, 0])
+        dpg.set_item_height('Tank', main_height // 3 - menu_height)
+        dpg.set_item_pos   ('Tank', [0, menu_height])
 
         dpg.set_item_width ('Grain', main_width // 2)
         dpg.set_item_height('Grain', main_height // 3)
@@ -50,10 +128,6 @@ def main():
         dpg.set_item_width ('Chamber', main_width // 2)
         dpg.set_item_height('Chamber', main_height // 3)
         dpg.set_item_pos   ('Chamber', [0, 2 * main_height // 3])
-        
-        dpg.set_item_width ('General', main_width // 2)
-        dpg.set_item_height('General', main_height // 3)
-        dpg.set_item_pos   ('General', [main_width // 2, 0])
 
         dpg.set_item_width ('Preview', main_width // 2)
         dpg.set_item_height('Preview', main_height // 3)
@@ -68,41 +142,6 @@ def main():
 
     # First row
     settings = { 'no_move': True, 'no_collapse': True, 'no_resize': True, 'no_close': True }
-
-    with dpg.window(tag='General', label='General', **settings):
-        dpg.add_input_text(label='Manufacturer')
-        # def save_callback():
-        #     print('Save Clicked')
-        # dpg.add_button(label='Save', callback=save_callback)
-
-        
-        # https://dearpygui.readthedocs.io/en/latest/documentation/file-directory-selector.html
-        dpg.add_file_dialog(directory_selector=True, show=False, tag="load")
-        dpg.add_file_dialog(directory_selector=True, show=False, tag="save")
-        dpg.add_file_dialog(directory_selector=True, show=False, tag="save_rse")
-        dpg.add_file_dialog(directory_selector=True, show=False, tag="save_eng")
-
-        with dpg.group(horizontal=True):
-            dpg.add_button(label="Load", callback=lambda: dpg.show_item("load"))
-            dpg.add_button(label="Save", callback=lambda: dpg.show_item("save"))
-            dpg.add_button(label="Save As", callback=lambda: dpg.show_item("save"))
-            dpg.add_button(label="Export RSE", callback=lambda: dpg.show_item("save_rse"))
-            dpg.add_button(label="Export ENG", callback=lambda: dpg.show_item("save_eng"))
-
-    with dpg.window(tag='Preview', label='Preview', **settings):
-        # dpg.add_text('Bottom Right Section')
-        # dpg.add_simple_plot(label="Simple Plot", min_scale=-1.0, max_scale=1.0, height=300, tag="plot")
-        # create plot
-        with dpg.plot(tag='preview_1', height=300, width=800):
-            # optionally create legend
-            dpg.add_plot_legend()
-
-            # REQUIRED: create x and y axes
-            dpg.add_plot_axis(dpg.mvXAxis, label="t (s)")
-            dpg.add_plot_axis(dpg.mvYAxis, label="Thrust (N)", tag="y_axis")
-
-            # series belong to a y axis
-            dpg.add_line_series([], [], label="Trust", parent="y_axis", tag="series_tag")
     
     params = { }
     def set_param(tag, val):
@@ -406,11 +445,46 @@ def main():
                     dpg.add_input_float(label=title, step=props['step'], format=f'%.{decimal}f', tag=props['uuid'])
                     if 'default' in props:
                         dpg.set_value(props['uuid'], props['default'])
+    
+    with dpg.window(label='menu', tag='menu', no_title_bar=True, menubar=True, no_bring_to_front_on_focus=True, **settings):
+        dpg.add_file_dialog(directory_selector=True, show=False, tag="load")
+        dpg.add_file_dialog(directory_selector=True, show=False, tag="save")
+        dpg.add_file_dialog(directory_selector=True, show=False, tag="save_rse")
+        dpg.add_file_dialog(directory_selector=True, show=False, tag="save_eng")
+        
+        with dpg.menu_bar():
+            with dpg.menu(label="File"):
+                # https://dearpygui.readthedocs.io/en/latest/documentation/file-directory-selector.html
+                dpg.add_menu_item(label="Load",       callback=lambda: dpg.show_item("load"))
+                dpg.add_menu_item(label="Save",       callback=lambda: dpg.show_item("save"))
+                dpg.add_menu_item(label="Save As",    callback=lambda: dpg.show_item("save"))
+                dpg.add_menu_item(label="Export RSE", callback=lambda: dpg.show_item("save_rse"))
+                dpg.add_menu_item(label="Export ENG", callback=lambda: dpg.show_item("save_eng"))
+            with dpg.menu(label="Config"):
+                dpg.add_input_text(label='Manufacturer')
+            with dpg.menu(label="Theme"):
+                for theme in themes: dpg.add_menu_item(label=theme, callback=apply_theme_callback, user_data=theme)
+        
+        with dpg.window(tag='Preview', label='Preview', **settings):
+            # dpg.add_text('Bottom Right Section')
+            # dpg.add_simple_plot(label="Simple Plot", min_scale=-1.0, max_scale=1.0, height=300, tag="plot")
+            # create plot
+            with dpg.plot(tag='preview_1', height=300, width=800):
+                # optionally create legend
+                dpg.add_plot_legend()
 
-    make_part_window ('Tank',    tnk_config)
-    make_grain_window('Grain',   grain_config)
-    make_part_window ('Chamber', cmbr_config)
-    make_part_window ('Nozzle',  noz_config)
+                # REQUIRED: create x and y axes
+                dpg.add_plot_axis(dpg.mvXAxis, label="t (s)")
+                dpg.add_plot_axis(dpg.mvYAxis, label="Thrust (N)", tag="y_axis")
+
+                # series belong to a y axis
+                dpg.add_line_series([], [], label="Trust", parent="y_axis", tag="series_tag")
+        
+        make_part_window ('Tank',    tnk_config)
+        make_grain_window('Grain',   grain_config)
+        make_part_window ('Chamber', cmbr_config)
+        make_part_window ('Nozzle',  noz_config)
+    
     part_configs = { 'cmbr': cmbr_config, 'noz': noz_config, 'tnk': tnk_config, 'grn': grain_config }
     
     init_deps()
@@ -423,8 +497,7 @@ def main():
     # import pkgutils
     # data_dir = Path(pkgutils.resolve_name('hrap.tank').__file__).parent
     # data_path = Path(data_dir , 'HTPB.mat')
-    from importlib.resources import files as imp_files
-    chem = scipy.io.loadmat(str(imp_files('hrap').joinpath('HTPB.mat')))
+    chem = scipy.io.loadmat(hrap_root/'resources'/'propellant_configs'/'HTPB.mat')
     
     chem = chem['s'][0][0]
     chem_OF = chem[1].ravel()
@@ -477,7 +550,7 @@ def main():
         method,
     )
 
-    resize_windows()
+    # resize_windows()
     dpg.set_viewport_resize_callback(resize_windows)
     
     upd_max_fps = 4
