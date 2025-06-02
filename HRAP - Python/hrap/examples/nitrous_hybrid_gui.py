@@ -140,28 +140,28 @@ def main():
         dpg.set_item_width ('menu', view_w)
         # dpg.set_item_height('menu', menu_height)
         
-        dpg.set_item_width ('Tank', view_w // 2)
-        dpg.set_item_height('Tank', view_h // 3 - menu_height)
-        dpg.set_item_pos   ('Tank', [0, menu_height])
+        dpg.set_item_width ('tank', view_w // 2)
+        dpg.set_item_height('tank', view_h // 3 - menu_height)
+        dpg.set_item_pos   ('tank', [0, menu_height])
 
-        dpg.set_item_width ('Grain', view_w // 2)
-        dpg.set_item_height('Grain', view_h // 3)
-        dpg.set_item_pos   ('Grain', [0, view_h // 3])
+        dpg.set_item_width ('grain', view_w // 2)
+        dpg.set_item_height('grain', view_h // 3)
+        dpg.set_item_pos   ('grain', [0, view_h // 3])
         
-        dpg.set_item_width ('Chamber', view_w // 2)
-        dpg.set_item_height('Chamber', view_h // 3)
-        dpg.set_item_pos   ('Chamber', [0, 2 * view_h // 3])
+        dpg.set_item_width ('chamber', view_w // 2)
+        dpg.set_item_height('chamber', view_h // 3)
+        dpg.set_item_pos   ('chamber', [0, 2 * view_h // 3])
 
-        dpg.set_item_width ('Preview', view_w // 2)
-        dpg.set_item_height('Preview', view_h // 3)
-        dpg.set_item_pos   ('Preview', [view_w // 2, view_h // 3])
+        dpg.set_item_width ('preview', view_w // 2)
+        dpg.set_item_height('preview', view_h // 3)
+        dpg.set_item_pos   ('preview', [view_w // 2, view_h // 3])
 
         dpg.set_item_width ('preview_1', view_w // 2 - 18)
         dpg.set_item_height('preview_1', view_h // 3 - 36)
         
-        dpg.set_item_width ('Nozzle', view_w // 2)
-        dpg.set_item_height('Nozzle', view_h // 3)
-        dpg.set_item_pos   ('Nozzle', [view_w // 2, 2 * view_h // 3])
+        dpg.set_item_width ('nozzle', view_w // 2)
+        dpg.set_item_height('nozzle', view_h // 3)
+        dpg.set_item_pos   ('nozzle', [view_w // 2, 2 * view_h // 3])
 
     # First row
     settings = { 'no_move': True, 'no_collapse': True, 'no_resize': True, 'no_close': True }
@@ -224,250 +224,16 @@ def main():
         man_call_ox_T()
         # man_call_ox_m()
         man_call_noz_AR()
-
-    tnk_config = {
-        'Inner Diameter': {
-            'type': float,
-            'tag': 'ox_D',
-            'min': 0.0,
-            'default': 4.75 * _in,
-            'step': 1E-3,
-            'decimal': 4,
-            'man_call': man_call_ox_D,
-        },
-        'Length': {
-            'type': float,
-            'tag': 'ox_L',
-            'min': 0.0,
-            'default': 7 * _ft,
-            'step': 1E-2,
-            'decimal': 4,
-            'man_call': man_call_ox_L,
-        },
-        'Volume': {
-            'type': float,
-            'tag': 'ox_V',
-            'key': 'V',
-            'min': 1E-9,
-            'max': 1.0,
-            # 'default': (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
-            'step': 1E-4,
-            'decimal': 6,
-            'man_call': man_call_ox_V,
-        },
-
-        # 'Injector CdA': {
-        #     'type': float,
-        #     'key': 'inj_CdA',
-        #     'min': 1E-9,
-        #     'default': 0.5 * (np.pi/4 * 0.5**2 * _in**2),
-        #     'step': 1E-6,
-        #     'decimal': 6,
-        # },
-        # 
-        'Oxidizer Temperature': {
-            'type': float,
-            'tag': 'ox_T',
-            'key': 'T',
-            'min': 240.0, # Generously high, yet leaves room for applicabiltiy
-            'max': 305.0, # 309 is max applicability of sat nos
-            'default': 293.0,
-            'step': 1.0,
-            'decimal': 0,
-            'man_call': man_call_ox_T,
-        },
-        'Oxidizer Pressure': {
-            'type': float,
-            'tag': 'ox_P',
-            # 'key': 'P',
-            # 'min': 1.0,
-            # 'max': 1E+3,
-            # 'default': 293.0,
-            'step': 10.0E3,
-            'decimal': 0,
-            'man_call': man_call_ox_P,
-        },
-        'Oxidizer Mass': {
-            'type': float,
-            'tag': 'ox_m', # TODO ..., actually change below
-            'key': 'm_ox',
-            'min': 1E-3,
-            'max': 1E+3,
-            # 'default': 14.0,
-            'step': 1E-1,
-            'decimal': 3,
-            'man_call': man_call_ox_m,
-        },
-        'Oxidizer Fill [%]': {
-            'type': float,
-            'tag': 'ox_fill',
-            # 'key': 'm_ox',
-            'min': 1.0,
-            'max': 100.0,
-            'default': 70.0,
-            'step': 5E-1,
-            'decimal': 1,
-            'man_call': man_call_ox_fill,
-        },
-        # V = (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
-        # inj_CdA= 0.5 * (np.pi/4 * 0.5**2 * _in**2),
-        # m_ox=14.0
-    }
     
-    # TODO: add info descriptions!
-    cmbr_config = {
-        # 'Diameter': {
-            # 'type': float,
-            # 'min': 0.0,
-            # 'step': 1E-3,
-            # 'decimal': 4,
-        # },
-        # 'Length': {
-            # 'type': float,
-            # 'min': 0.0,
-            # 'step': 1E-3,
-            # 'decimal': 4,
-        # },
-        'Volume [m^3]': {
-            'type': float,
-            'key': 'V0',
-            'min': 0.0,
-            'step': 1E-4,
-            'decimal': 6,
-        },
-        'C* Efficiency': {
-            'type': float,
-            'key': 'cstar_eff',
-            'min': 0.01,
-            'max': 1.0,
-            'default': 0.95,
-            'step': 1E-2,
-            'decimal': 2,
-        }
-    }
-    
-    grain_config = {
-        'Fixed O/F ratio': {
-            'type': float,
-            'key': 'OF',
-            'min': 0.01,
-            'max': 100.0,
-            'default': 5.0,
-            'step': 1E-1,
-            'decimal': 2,
-        },
-        'Inner diamater': {
-            'type': float,
-            # 'key': 'OD',
-            'min': 0.001,
-            'default': 2.0 * _in,
-            'step': 1E-3,
-            'decimal': 4,
-        },
-        'Outer diamater': {
-            'type': float,
-            'key': 'OD',
-            'min': 0.001,
-            'default': 5.0 * _in,
-            'step': 1E-3,
-            'decimal': 4,
-        },
-        'Length': {
-            'type': float,
-            'key': 'L',
-            'min': 0.001,
-            'default': 5.0 * _ft,
-            'step': 1E-2,
-            'decimal': 4,
-        },
-    }
-
-    noz_config = {
-        'Discharge Coefficient': {
-            'type': float,
-            'key': 'Cd',
-            'min': 0.01,
-            'max': 1.0,
-            'default': 0.9,
-            'step': 1E-2,
-            'decimal': 2,
-        },
-        'Efficiency': {
-            'type': float,
-            'key': 'eff',
-            'min': 0.01,
-            'max': 1.0,
-            'default': 0.9,
-            'step': 1E-2,
-            'decimal': 2,
-        },
-        'Throat Diameter [m]': {
-            'type': float,
-            'tag': 'noz_throat',
-            'key': 'thrt',
-            'min': 0.001,
-            'default': 1.5 * _in,
-            'step': 1E-3,
-            'decimal': 3,
-        },
-        'Exit Diameter': {
-            'type': float,
-            'tag': 'noz_exit',
-            # 'key': None,
-            'min': 0.001,
-            # 'default': 5.0,
-            'step': 1E-3,
-            'decimal': 5,
-            'man_call': man_call_noz_D_exit,
-        },
-        'Exit/Throat Area Ratio': {
-            'type': float,
-            'tag': 'noz_AR',
-            'key': 'ER',
-            'min': 1.001,
-            'default': 5.0,
-            'step': 1E-1,
-            'decimal': 3,
-            'man_call': man_call_noz_AR,
-        },
-        # TODO: atm pressure, button to optimize (based on ss, mid liq?)!
-    }
-
-    def make_part_window(name, part_config):
-        for key in part_config:
-            if 'tag' in part_config[key]:
-                part_config[key]['uuid'] = part_config[key]['tag']
-                config[part_config[key]['tag']] = part_config[key]
-            else:
-                part_config[key]['uuid'] = dpg.generate_uuid() # TODO just tag
-        # print(name)
-        with dpg.window(tag=name, label=name, **settings):
-            for title, props in part_config.items():
-                if props['type'] == float:
-                    decimal = props['decimal'] if 'decimal' in props else 3
-                    callback = props['man_call'] if 'man_call' in props else None
-                    dpg.add_input_float(label=title, step=props['step'], format=f'%.{decimal}f', tag=props['uuid'], callback=callback)
-                    if 'default' in props:
-                        dpg.set_value(props['uuid'], props['default'])
-                    # dpg.add_text(key)
-    
-    def make_grain_window(name, part_config):
-        for key in part_config:
-            part_config[key]['uuid'] = dpg.generate_uuid()
-        with dpg.window(tag=name, label=name, **settings):
-            dpg.add_text('Geometry')
-            dpg.add_combo(label='Grain Shape', tag='select_shape', items=['Cylindrical', 'Star', 'Custom'], default_value='Cylindrical')
-
-            dpg.add_text('Regression')
-            dpg.add_combo(label='Rate Law', tag='select_regression', items=['Constant O/F', 'Regression Rate'], default_value='Constant O/F')
-            # show_item, hide_item
-
-            for title, props in part_config.items():
-                if props['type'] == float:
-                    decimal = props['decimal'] if 'decimal' in props else 3
-                    dpg.add_input_float(label=title, step=props['step'], format=f'%.{decimal}f', tag=props['uuid'])
-                    if 'default' in props:
-                        dpg.set_value(props['uuid'], props['default'])
+    def make_param(title, props):
+        # if 'tag' in props:
+        config[props['tag']] = props
+        if props['type'] == float:
+            decimal = props['decimal'] if 'decimal' in props else 3
+            callback = props['man_call'] if 'man_call' in props else None
+            dpg.add_input_float(label=title, step=props['step'], format=f'%.{decimal}f', tag=props['tag'], callback=callback)
+            if 'default' in props:
+                dpg.set_value(props['tag'], props['default'])
     
     def save_callback():
         print('saving', active_file)
@@ -529,6 +295,221 @@ def main():
                 def apply_theme_callback(sender, app_data, user_data): apply_theme(user_data, True)
                 for theme in themes: dpg.add_menu_item(label=theme, callback=apply_theme_callback, user_data=theme)
         
+        
+        
+        # Make tank window
+        with dpg.window(tag='tank', label='Tank', **settings):
+            make_param('Inner Diameter', {
+                'type': float,
+                'tag': 'ox_D',
+                'min': 0.0,
+                'default': 4.75 * _in,
+                'step': 1E-3,
+                'decimal': 4,
+                'man_call': man_call_ox_D,
+            })
+            make_param('Length', {
+                'type': float,
+                'tag': 'ox_L',
+                'min': 0.0,
+                'default': 7 * _ft,
+                'step': 1E-2,
+                'decimal': 4,
+                'man_call': man_call_ox_L,
+            })
+            make_param('Volume', {
+                'type': float,
+                'tag': 'ox_V', 'key': 'V',
+                'min': 1E-9,
+                'max': 1.0,
+                # 'default': (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
+                'step': 1E-4,
+                'decimal': 6,
+                'man_call': man_call_ox_V,
+            })
+
+            # 'Injector CdA': {
+            #     'type': float,
+            #     'key': 'inj_CdA',
+            #     'min': 1E-9,
+            #     'default': 0.5 * (np.pi/4 * 0.5**2 * _in**2),
+            #     'step': 1E-6,
+            #     'decimal': 6,
+            # },
+            # 
+            make_param('Oxidizer Temperature', {
+                'type': float,
+                'tag': 'ox_T', 'key': 'T',
+                'min': 240.0, # Generously high, yet leaves room for applicabiltiy
+                'max': 305.0, # 309 is max applicability of sat nos
+                'default': 293.0,
+                'step': 1.0,
+                'decimal': 0,
+                'man_call': man_call_ox_T,
+            })
+            make_param('Oxidizer Pressure', {
+                'type': float,
+                'tag': 'ox_P',
+                # 'key': 'P',
+                # 'min': 1.0,
+                # 'max': 1E+3,
+                # 'default': 293.0,
+                'step': 10.0E3,
+                'decimal': 0,
+                'man_call': man_call_ox_P,
+            })
+            make_param('Oxidizer Mass', {
+                'type': float,
+                'tag': 'ox_m', 'key': 'm_ox', # TODO ..., actually change below
+                'min': 1E-3, 'max': 1E+3,
+                # 'default': 14.0,
+                'step': 1E-1,
+                'decimal': 3,
+                'man_call': man_call_ox_m,
+            })
+            make_param('Oxidizer Fill [%]', {
+                'type': float,
+                'tag': 'ox_fill',
+                # 'key': 'm_ox',
+                'min': 1.0,
+                'max': 100.0,
+                'default': 70.0,
+                'step': 5E-1,
+                'decimal': 1,
+                'man_call': man_call_ox_fill,
+            })
+            # V = (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
+            # inj_CdA= 0.5 * (np.pi/4 * 0.5**2 * _in**2),
+            # m_ox=14.0
+        
+        # Make grain window
+        with dpg.window(tag='grain', label='Grain', **settings):
+            dpg.add_text('Geometry')
+            dpg.add_combo(label='Grain Shape', tag='select_shape', items=['Cylindrical', 'Star', 'Custom'], default_value='Cylindrical')
+
+            dpg.add_text('Regression')
+            dpg.add_combo(label='Rate Law', tag='select_regression', items=['Constant O/F', 'Regression Rate'], default_value='Constant O/F')
+            # show_item, hide_item
+            
+            make_param('Fixed O/F ratio', {
+                'type': float,
+                'tag': 'OF' 'key': 'OF',
+                'min': 0.01, 'max': 100.0,
+                'default': 5.0,
+                'step': 1E-1,
+                'decimal': 2,
+            })
+            make_param('Density', {
+                'type': float,
+                'tag': 'grn_rho', 'key': 'rho',
+                'min': 100.0,
+                'default': 1117.0 * _in,
+                'step': 10.0,
+                'decimal': 0,
+            })
+            make_param('Inner diamater', {
+                'type': float,
+                'tag': 'grn_shape_ID', 'key': 'shape_ID',
+                'min': 0.001,
+                'default': 2.0 * _in,
+                'step': 1E-3,
+                'decimal': 4,
+            })
+            make_param('Outer diamater', {
+                'type': float,
+                'tag': 'grn_OD', 'key': 'OD',
+                'min': 0.001,
+                'default': 5.0 * _in,
+                'step': 1E-3,
+                'decimal': 4,
+            })
+            make_param('Length', {
+                'type': float,
+                'tag': 'grn_L', 'key': 'L',
+                'min': 0.001,
+                'default': 5.0 * _ft,
+                'step': 1E-2,
+                'decimal': 4,
+            })
+        
+        # Make chamber window
+        with dpg.window(tag='chamber', label='Chamber', **settings):
+            # 'Diameter': {
+                # 'type': float,
+                # 'min': 0.0,
+                # 'step': 1E-3,
+                # 'decimal': 4,
+            # },
+            # 'Length': {
+                # 'type': float,
+                # 'min': 0.0,
+                # 'step': 1E-3,
+                # 'decimal': 4,
+            # },
+            make_param('Volume [m^3]', {
+                'type': float,
+                'tag': 'cmbr_V0', 'key': 'V0',
+                'min': 0.0,
+                'step': 1E-4,
+                'decimal': 6,
+            })
+            make_param('C* Efficiency', {
+                'type': float,
+                'tag': 'cstar_eff', 'key': 'cstar_eff',
+                'min': 0.01, 'max': 1.0,
+                'default': 0.95,
+                'step': 1E-2,
+                'decimal': 2,
+            })
+        
+        # Make nozzle window
+        with dpg.window(tag='nozzle', label='Nozzle', **settings):
+            make_param('Discharge Coefficient', {
+                'type': float,
+                'tag': 'noz_Cd', 'key': 'Cd',
+                'min': 0.01, 'max': 1.0,
+                'default': 0.9,
+                'step': 1E-2,
+                'decimal': 2,
+            })
+            make_param('Efficiency', {
+                'type': float,
+                'tag': 'noz_eff', 'key': 'eff',
+                'min': 0.01, 'max': 1.0,
+                'default': 0.9,
+                'step': 1E-2,
+                'decimal': 2,
+            })
+            make_param('Throat Diameter [m]', {
+                'type': float,
+                'tag': 'noz_throat',
+                'key': 'thrt',
+                'min': 0.001,
+                'default': 1.5 * _in,
+                'step': 1E-3,
+                'decimal': 3,
+            })
+            make_param('Exit Diameter', {
+                'type': float,
+                'tag': 'noz_exit',
+                # 'key': None,
+                'min': 0.001,
+                # 'default': 5.0,
+                'step': 1E-3,
+                'decimal': 5,
+                'man_call': man_call_noz_D_exit,
+            })
+            make_param('Exit/Throat Area Ratio', {
+                'type': float,
+                'tag': 'noz_AR', 'key': 'ER',
+                'min': 1.001,
+                'default': 5.0,
+                'step': 1E-1,
+                'decimal': 3,
+                'man_call': man_call_noz_AR,
+            })
+            # TODO: atm pressure, button to optimize (based on ss, mid liq?)!
+        
         with dpg.window(tag='Preview', label='Preview', **settings):
             # dpg.add_text('Bottom Right Section')
             # dpg.add_simple_plot(label='Simple Plot', min_scale=-1.0, max_scale=1.0, height=300, tag='plot')
@@ -544,12 +525,7 @@ def main():
                 # series belong to a y axis
                 dpg.add_line_series([], [], label='Trust', parent='y_axis', tag='series_tag')
         
-        make_part_window ('Tank',    tnk_config)
-        make_grain_window('Grain',   grain_config)
-        make_part_window ('Chamber', cmbr_config)
-        make_part_window ('Nozzle',  noz_config)
-    
-    part_configs = { 'cmbr': cmbr_config, 'noz': noz_config, 'tnk': tnk_config, 'grn': grain_config }
+    # part_configs = { 'cmbr': cmbr_config, 'noz': noz_config, 'tnk': tnk_config, 'grn': grain_config }
     
     init_deps()
 

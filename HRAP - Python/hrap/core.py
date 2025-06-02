@@ -217,11 +217,11 @@ def make_integrator(fstep, method):
         xstack = xstack.at[0, :].set(x)
 
         # Run solver while loop and record elapsed wall time
-        wall_t1 = time.time()
+        # wall_t1 = time.time()
         t, _, _, x, _, xstack = jax.lax.fori_loop(1, Nt+1, step_t, (t, dt, s, x, method['xmap'], xstack)) # TODO: jit outside!
         # for i in range(1, Nt+1):
         #     t, _, _, x, _, xstack = step_t(i, (t, dt, s, x, method['xmap'], xstack))
-        wall_t2 = time.time()
+        # wall_t2 = time.time()
 
         # print('Solved in', wall_t2 - wall_t1, 's')
 
