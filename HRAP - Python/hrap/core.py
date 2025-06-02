@@ -229,3 +229,60 @@ def make_integrator(fstep, method):
     
     return run_solver
     # TODO: use pytree vmap
+
+def get_impulse_class(value_Ns: float) -> str:
+    index = int(np.floor(np.log(value_Ns / 2.5)/np.log(2))) + 1
+    Iclass = ''
+    if index > 25: Iclass += chr(ord('A') + (index // 25 - 1))
+    Iclass += chr(ord('A') + (index % 25))
+    
+    return Iclass
+
+def export_rse(out_file, series, OD, L, D_throat, D_exit, motor_type='liquid', mfg='SSTA'):
+    t, F, prop_mdot, m, Cg = [series[k] for k in ['t', 'F', 'prop_mdot', 'm', 'Cg']]
+    
+    # TODO: downsample
+    # TODO: autocut?
+    
+    Itot = np.trapezoid(F, t)
+    prop_burnt = np.trapezoid(prop_mdot, t) # not m[0] - m[-1] due to potential venting etc.
+    F_max = np.max(F)
+    T_burn = t[-1] - t[0]
+    
+    Isp = Itot / (prop_burnt*9.81)
+    F_avg = Itot / T_burn
+    
+    with open(out_file, 'w') as f:
+        f.write('<engine-database>\n    <engine-list>\n')
+        f.write(\
+'    <engine FDiv=\"10\" FFix=\"1\" FStep=\"-1.\" Isp=\"{Isp}\" Itot=\"{Itot}\"\
+ Type=\"Hybrid\" auto-calc-cg=\"0\" auto-calc-mass=\"0\" avgThrust=\"{F_avg}\"\
+ burn-time=\"{T_burn}\" cgDiv=\"10\" cgFix=\"1\" cgStep=\"-1.\" code=\"{code}{F_avg_i}\" delays=\"0\"\
+ dia=\"{OD}\" D_exit=\"{D_exit}\" initWt=\"{m0}\" len=\"{L}\"\
+ mDiv=\"10\" mFix=\"1\" mStep=\"-1.\" massFrac=\"{mfrac}\" mfg=\"{mfg}\" peakThrust=\"{F_max}\"\
+ propWt=\"{propWt}\" tDiv=\"10\" tFix=\"1\" tStep=\"-1.\" throatDia=\"{D_throat}\">\n    <data>\n'.format(
+            Isp=Isp, Itot=Itot,
+            F_avg=F_avg,
+            T_burn=T_burn, code=get_impulse_class(Itot), F_avg_i=int(np.round(F_avg)),
+            OD=OD*1000.0, D_exit=D_exit*1000.0, m0=m[0]*1000.0, L=L*1000.0,
+            mfrac=(m[0] - m[-1])/m[0], mfg=mfg, F_max=F_max,
+            propWt=(m[0]-m[-1])*1000.0, D_throat=D_throat*1000.0))
+        for i in range(t.size):
+            f.write('        <eng-data cg=\"{Cg}\" f=\"{F}\" m=\"{m}\" t=\"{t}\"/>\n'.format(
+                        Cg=Cg[i]*1000.0, F=np.max([0.0, F[i]]), m=m[i]*1000.0, t=t[i]))
+        f.write('    </data>\n    </engine>\n    </engine-list>\n</engine-database>')
+
+def export_eng(out_file, series, OD, L, mfg='SSTA'):
+    t, F, m = [series[k] for k in ['t', 'F', 'm']]
+    # TODO: properly downsample!
+    
+    Itot = np.trapezoid(F, t)
+    T_burn = t[-1] - t[0]
+    
+    F_avg = Itot / T_burn
+    
+    with open(out_file, 'w') as f:
+    f.write('{mfg} {OD} {L} P {propWt} {m0} {code}{F_avg_i}\n'.format(mfg=mfg, OD=1000.0 * OD, L=1000.0 * L, propWt=m[0] - m[-1], m0=m[0], code=get_impulse_class(Itot), F_avg_i=int(np.round(F_avg))))
+    for i in range(31):
+        f.write(' {t} {F} \n'.format(t=t[i * t.size//31], F=F[i * t.size//31]))
+    f.write(' {t} 0.0 \n'.format(t=t[-1]))
