@@ -498,7 +498,7 @@ def main():
                 'type': float,
                 'tag': 'grn_rho', 'direct': True,
                 'min': 100.0,
-                'default': 1117.0 * _in,
+                'default': 1117.0,
                 'step': 10.0,
                 'decimal': 0,
             })
