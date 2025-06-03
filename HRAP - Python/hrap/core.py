@@ -282,7 +282,7 @@ def export_eng(out_file, series, OD, L, mfg='SSTA'):
     F_avg = Itot / T_burn
     
     with open(out_file, 'w') as f:
-    f.write('{mfg} {OD} {L} P {propWt} {m0} {code}{F_avg_i}\n'.format(mfg=mfg, OD=1000.0 * OD, L=1000.0 * L, propWt=m[0] - m[-1], m0=m[0], code=get_impulse_class(Itot), F_avg_i=int(np.round(F_avg))))
+        f.write('{mfg} {OD} {L} P {propWt} {m0} {code}{F_avg_i}\n'.format(mfg=mfg, OD=1000.0 * OD, L=1000.0 * L, propWt=m[0] - m[-1], m0=m[0], code=get_impulse_class(Itot), F_avg_i=int(np.round(F_avg))))
     for i in range(31):
         f.write(' {t} {F} \n'.format(t=t[i * t.size//31], F=F[i * t.size//31]))
     f.write(' {t} 0.0 \n'.format(t=t[-1]))

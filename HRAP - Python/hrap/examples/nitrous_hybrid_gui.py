@@ -42,9 +42,72 @@ def get_datadir() -> Path:
         return home / 'Library/Application Support'
 
 # Global vars, issues unless declared outside of main
-active_file = None
+active_file  = None
+upd_due      = True
+s, x, method = [None]*3
+
+def load_preset_chem(hrap_root, name):
+    chem = scipy.io.loadmat(hrap_root/'resources'/'propellant_configs'/name)
+    
+    chem = chem['s'][0][0]
+    chem_OF = chem[1].ravel()
+    chem_Pc = chem[0].ravel()
+    chem_k, chem_M, chem_T = chem[2], chem[3], chem[4]
+
+    chem_interp_k = RegularGridInterpolator((chem_OF, chem_Pc), chem_k, fill_value=1.4)
+    chem_interp_M = RegularGridInterpolator((chem_OF, chem_Pc), chem_M, fill_value=29.0)
+    chem_interp_T = RegularGridInterpolator((chem_OF, chem_Pc), chem_T, fill_value=293.0)
+
+    return chem_interp_k, chem_interp_M, chem_interp_T
+
+def setup_motor(chem_interp_k, chem_interp_M, chem_interp_T):
+    # Initialization
+    tnk = make_sat_tank(
+        get_sat_nos_props,
+        V = (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
+        inj_CdA= 0.5 * (np.pi/4 * 0.5**2 * _in**2),
+        m_ox=1,#14.0, # TODO: init limit
+        # m_ox = 3.0,
+    )
+    # print('INJ TEST', 0.5 * (np.pi/4 * 0.5**2 * _in**2))
+
+    shape = make_circle_shape(
+        ID = 2.5 * _in,
+    )
+    grn = make_constOF_grain(
+        shape,
+        OF = 3.0,
+        OD = 5.0 * _in,
+        L = 4.0 * _ft,
+    )
+
+    cmbr = make_chamber(
+    )
+
+    noz = make_cd_nozzle(
+        thrt = 1.5 * _in, # Throat diameter
+        ER = 5.0,         # Exit/throat area ratio
+    )
+
+    s, x, method = core.make_engine(
+        tnk, grn, cmbr, noz,
+        chem_interp_k=chem_interp_k, chem_interp_M=chem_interp_M, chem_interp_T=chem_interp_T,
+        Pa=101e3,
+    )
+    # direct_s_tags = [tag in direct_tags if tag in s]
+    # direct_x_tags = [tag in direct_tags if tag in method['xmap']]
+
+    fire_engine = core.make_integrator(
+        # core.step_rk4,
+        core.step_fe,
+        method,
+    )
+    
+    return s, x, method, fire_engine
 
 def main():
+    global upd_due, s, x, method
+
     print('beginning w/ hrap version', hrap_version)
     jax.config.update('jax_enable_x64', True)
     
@@ -121,116 +184,150 @@ def main():
 
     apply_theme(settings['theme'], False)
     
+
+
+    # Create initial internal motor
+    chem_info = load_preset_chem(hrap_root, 'HTPB.mat')
+    s, x, method, fire_engine = setup_motor(*chem_info)
     
+
 
     # dpg.set_viewport_vsync(True)
 
     # TODO: use that this also gets called on move to set intial pos
-    def resize_windows():
+    def resize_callback():
         # Get the size of the main window
-        view_w, view_h = dpg.get_viewport_client_width(), dpg.get_viewport_client_height()
-        view_x, view_y = dpg.get_viewport_pos()
-        menu_height = 20
+        vw, vh = dpg.get_viewport_client_width(), dpg.get_viewport_client_height()
+        vx, vy = dpg.get_viewport_pos()
+        mh = 20 # Menu height
         
-        settings['view_w'] = view_w; settings['view_h'] = view_h
-        settings['view_x'] = view_x; settings['view_y'] = view_y
+        settings['view_w'] = vw; settings['view_h'] = vh
+        settings['view_x'] = vx; settings['view_y'] = vy
         save_settings(settings)
 
         # Update the size and position of each window based on the main window's size
-        dpg.set_item_width ('menu', view_w)
-        # dpg.set_item_height('menu', menu_height)
-        
-        dpg.set_item_width ('tank', view_w // 2)
-        dpg.set_item_height('tank', view_h // 3 - menu_height)
-        dpg.set_item_pos   ('tank', [0, menu_height])
+        dpg.set_item_width ('menu', vw)
 
-        dpg.set_item_width ('grain', view_w // 2)
-        dpg.set_item_height('grain', view_h // 3)
-        dpg.set_item_pos   ('grain', [0, view_h // 3])
+        def set_wh(tag, w, h):
+            dpg.set_item_width (tag, w)
+            dpg.set_item_height(tag, h)
+        def set_whxy(tag, w, h, x, y):
+            set_wh(tag, w, h)
+            dpg.set_item_pos(tag, [x, y])
         
-        dpg.set_item_width ('chamber', view_w // 2)
-        dpg.set_item_height('chamber', view_h // 3)
-        dpg.set_item_pos   ('chamber', [0, 2 * view_h // 3])
+        set_whxy('tank',    vw // 2, vh // 3 - mh, 0,       mh         )
+        set_whxy('grain',   vw // 2, vh // 3,      0,       vh // 3    )
+        set_whxy('chamber', vw // 2, vh // 3,      0,       2 * vh // 3)
+        set_whxy('nozzle',  vw // 2, vh // 3,      vw // 2, 2 * vh // 3)
+        set_whxy('preview', vw // 2, vh // 3,      vw // 2, vh // 3    )
 
-        dpg.set_item_width ('preview', view_w // 2)
-        dpg.set_item_height('preview', view_h // 3)
-        dpg.set_item_pos   ('preview', [view_w // 2, view_h // 3])
-
-        dpg.set_item_width ('preview_1', view_w // 2 - 18)
-        dpg.set_item_height('preview_1', view_h // 3 - 36)
-        
-        dpg.set_item_width ('nozzle', view_w // 2)
-        dpg.set_item_height('nozzle', view_h // 3)
-        dpg.set_item_pos   ('nozzle', [view_w // 2, 2 * view_h // 3])
+        set_wh('preview_1', vw // 2 - 18, vh // 3 - 36)
 
     # First row
     settings = { 'no_move': True, 'no_collapse': True, 'no_resize': True, 'no_close': True }
     
     config = { }
-    def set_param(tag, val):
-        props = config[tag]
+    def clamped_param(val, props):
         if 'min' in props and val < props['min']:
-            dpg.set_value(tag, props['min'])
+            return [props['min']]*2
         elif 'max' in props and val > props['max']:
-            dpg.set_value(tag, props['max'])
+            return [props['max']]*2
+        return val, None
+
+    def upd_direct_param(k): # TODO: no clam version
+        global upd_due, x
+
+        v = dpg.get_value(k)
+        if k in s:
+            if s[k] != v:
+                s[k] = v
+                upd_due = True
+                print('update due to s', k)
+        elif k in method['xmap']:
+            # print(k, x[method['xmap'][k]], v)
+            if x[method['xmap'][k]] != v:
+                print('update due to x', k)
+                x = x.at[method['xmap'][k]].set(v)
+                upd_due = True
         else:
-            dpg.set_value(tag, float(val))
+            print('ERROR:', k, 'is nowhere!')
+    
+    def upd_param(tag):
+        props = config[tag]
+        v, clam = clamped_param(dpg.get_value(tag), props)
+        if clam != None: dpg.set_value(tag, clam)
+        if props['direct']: upd_direct_param(tag)
+        return clam
+
+    def set_param(tag, val):
+        dpg.set_value(tag, float(val))
+        return upd_param(tag)
     
     # Callbacks for manual adjustments (gets sets the UI components, not the motor)
-    def man_call_ox_D():
-        D, L, T, fill = [dpg.get_value(tag) for tag in ['ox_D', 'ox_L', 'ox_T', 'ox_fill']]
+    def man_call_tnk_D():
+        D, L, T, fill = [dpg.get_value(tag) for tag in ['tnk_D', 'tnk_L', 'tnk_T', 'tnk_fill']]
         props = get_sat_props(T)
         V = np.pi/4 * D**2 * L
-        set_param('ox_V', V)
-        set_param('ox_m', fill/100.0 * props['rho_l'] * V)
+        print('TANK', V, D, L)
+        set_param('tnk_V', V)
+        set_param('tnk_m_ox', fill/100.0 * props['rho_l'] * V)
     
-    man_call_ox_L = man_call_ox_D
+    man_call_tnk_L = man_call_tnk_D
     
-    def man_call_ox_V():
-        V, D, T, fill = [dpg.get_value(tag) for tag in ['ox_V', 'ox_D', 'ox_T', 'ox_fill']]
+    def man_call_tnk_V():
+        V, D, T, fill = [dpg.get_value(tag) for tag in ['tnk_V', 'tnk_D', 'tnk_T', 'tnk_fill']]
         props = get_sat_props(T)
-        set_param('ox_L', V / (np.pi/4 * D**2))
-        set_param('ox_m', fill/100.0 * props['rho_l'] * V)
+        set_param('tnk_L', V / (np.pi/4 * D**2))
+        set_param('tnk_m_ox', fill/100.0 * props['rho_l'] * V)
     
-    def man_call_ox_T():
-        T, V, fill = [dpg.get_value(tag) for tag in ['ox_T', 'ox_V', 'ox_fill']]
+    def man_call_tnk_T():
+        T, V, fill = [dpg.get_value(tag) for tag in ['tnk_T', 'tnk_V', 'tnk_fill']]
         props = get_sat_props(T)
-        set_param('ox_P', props['Pv'])
-        set_param('ox_m', fill/100.0 * props['rho_l'] * V)
+        set_param('tnk_P', props['Pv'])
+        set_param('tnk_m_ox', fill/100.0 * props['rho_l'] * V)
     
-    def man_call_ox_P():
+    def man_call_tnk_P():
         pass
     
-    def man_call_ox_m():
-        T, V, m = [dpg.get_value(tag) for tag in ['ox_T', 'ox_V', 'ox_m']]
+    def man_call_tnk_m_ox():
+        T, V, m = [dpg.get_value(tag) for tag in ['tnk_T', 'tnk_V', 'tnk_m_ox']]
         props = get_sat_props(T)
-        set_param('ox_fill', 100.0 * m / (props['rho_l'] * V))
+        fill_clam = set_param('tnk_fill', 100.0 * m / (props['rho_l'] * V))
+        if fill_clam != None: set_param('tnk_m_ox', fill_clam/100.0 * props['rho_l'] * V)
     
-    def man_call_ox_fill():
-        T, V, fill = [dpg.get_value(tag) for tag in ['ox_T', 'ox_V', 'ox_fill']]
+    def man_call_tnk_fill():
+        T, V, fill = [dpg.get_value(tag) for tag in ['tnk_T', 'tnk_V', 'tnk_fill']]
         props = get_sat_props(T)
-        set_param('ox_m', fill/100.0 * props['rho_l'] * V)
+        set_param('tnk_m_ox', fill/100.0 * props['rho_l'] * V)
     
+    def man_call_noz_thrt():
+        D_throat, ER = [dpg.get_value(tag) for tag in ['noz_thrt', 'noz_ER']]
+        set_param('noz_exit', np.sqrt(ER * D_throat**2))
+
     def man_call_noz_D_exit():
-        D_throat, D_exit = [dpg.get_value(tag) for tag in ['noz_throat', 'noz_exit']]
-        set_param('noz_AR', D_exit**2/D_throat**2)
+        D_throat, D_exit = [dpg.get_value(tag) for tag in ['noz_thrt', 'noz_exit']]
+        ER_clam = set_param('noz_ER', D_exit**2/D_throat**2)
+        if ER_clam != None: set_param('noz_exit', np.sqrt(ER_clam * D_throat**2))
     
-    def man_call_noz_AR():
-        D_AR, D_throat = [dpg.get_value(tag) for tag in ['noz_AR', 'noz_throat']]
-        set_param('noz_exit', np.sqrt(D_AR * D_throat**2))
+    def man_call_noz_ER():
+        ER, D_throat = [dpg.get_value(tag) for tag in ['noz_ER', 'noz_thrt']]
+        set_param('noz_exit', np.sqrt(ER * D_throat**2))
     
     def init_deps(): # Called after init/load to verify consistency
-        man_call_ox_D()
-        man_call_ox_T()
+        man_call_tnk_D()
+        man_call_tnk_T()
         # man_call_ox_m()
-        man_call_noz_AR()
-    
+        man_call_noz_ER()
+
     def make_param(title, props):
-        # if 'tag' in props:
         config[props['tag']] = props
+        if not 'direct' in props: props['direct'] = False
         if props['type'] == float:
             decimal = props['decimal'] if 'decimal' in props else 3
-            callback = props['man_call'] if 'man_call' in props else None
+            callbacks = [lambda *_, key=props['tag']: upd_param(key)] # All callbacks, beginning with update (clamp etc.)
+            if 'man_call' in props: callbacks.append(props['man_call'])
+            # callback = (None if len(callbacks) == 0 else (callbacks[0] if len(callbacks) == 1 else lambda *_, arr=callbacks: [f() for f in arr]))
+            callback = lambda *_, farr=callbacks: [f() for f in farr]
             dpg.add_input_float(label=title, step=props['step'], format=f'%.{decimal}f', tag=props['tag'], callback=callback)
             if 'default' in props:
                 dpg.set_value(props['tag'], props['default'])
@@ -301,31 +398,30 @@ def main():
         with dpg.window(tag='tank', label='Tank', **settings):
             make_param('Inner Diameter', {
                 'type': float,
-                'tag': 'ox_D',
+                'tag': 'tnk_D',
                 'min': 0.0,
                 'default': 4.75 * _in,
                 'step': 1E-3,
                 'decimal': 4,
-                'man_call': man_call_ox_D,
+                'man_call': man_call_tnk_D,
             })
             make_param('Length', {
                 'type': float,
-                'tag': 'ox_L',
+                'tag': 'tnk_L',
                 'min': 0.0,
                 'default': 7 * _ft,
                 'step': 1E-2,
                 'decimal': 4,
-                'man_call': man_call_ox_L,
+                'man_call': man_call_tnk_L,
             })
             make_param('Volume', {
                 'type': float,
-                'tag': 'ox_V', 'key': 'V',
-                'min': 1E-9,
-                'max': 1.0,
+                'tag': 'tnk_V', 'direct': True,
+                'min': 0.0,
                 # 'default': (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
                 'step': 1E-4,
                 'decimal': 6,
-                'man_call': man_call_ox_V,
+                'man_call': man_call_tnk_V,
             })
 
             # 'Injector CdA': {
@@ -339,44 +435,43 @@ def main():
             # 
             make_param('Oxidizer Temperature', {
                 'type': float,
-                'tag': 'ox_T', 'key': 'T',
+                'tag': 'tnk_T', 'direct': True,
                 'min': 240.0, # Generously high, yet leaves room for applicabiltiy
                 'max': 305.0, # 309 is max applicability of sat nos
                 'default': 293.0,
                 'step': 1.0,
                 'decimal': 0,
-                'man_call': man_call_ox_T,
+                'man_call': man_call_tnk_T,
             })
             make_param('Oxidizer Pressure', {
                 'type': float,
-                'tag': 'ox_P',
+                'tag': 'tnk_P',
                 # 'key': 'P',
                 # 'min': 1.0,
                 # 'max': 1E+3,
                 # 'default': 293.0,
                 'step': 10.0E3,
                 'decimal': 0,
-                'man_call': man_call_ox_P,
+                'man_call': man_call_tnk_P,
             })
             make_param('Oxidizer Mass', {
                 'type': float,
-                'tag': 'ox_m', 'key': 'm_ox', # TODO ..., actually change below
-                'min': 1E-3, 'max': 1E+3,
+                'tag': 'tnk_m_ox', 'direct': True, # TODO ..., actually change
+                # 'min': 1E-3, 'max': 1E+3,
                 # 'default': 14.0,
                 'step': 1E-1,
                 'decimal': 3,
-                'man_call': man_call_ox_m,
+                'man_call': man_call_tnk_m_ox,
             })
             make_param('Oxidizer Fill [%]', {
                 'type': float,
-                'tag': 'ox_fill',
+                'tag': 'tnk_fill',
                 # 'key': 'm_ox',
-                'min': 1.0,
-                'max': 100.0,
+                'min': 0.0, 'max': 100.0,
                 'default': 70.0,
                 'step': 5E-1,
                 'decimal': 1,
-                'man_call': man_call_ox_fill,
+                'man_call': man_call_tnk_fill,
             })
             # V = (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
             # inj_CdA= 0.5 * (np.pi/4 * 0.5**2 * _in**2),
@@ -393,7 +488,7 @@ def main():
             
             make_param('Fixed O/F ratio', {
                 'type': float,
-                'tag': 'OF' 'key': 'OF',
+                'tag': 'grn_OF', 'direct': True,
                 'min': 0.01, 'max': 100.0,
                 'default': 5.0,
                 'step': 1E-1,
@@ -401,7 +496,7 @@ def main():
             })
             make_param('Density', {
                 'type': float,
-                'tag': 'grn_rho', 'key': 'rho',
+                'tag': 'grn_rho', 'direct': True,
                 'min': 100.0,
                 'default': 1117.0 * _in,
                 'step': 10.0,
@@ -409,7 +504,7 @@ def main():
             })
             make_param('Inner diamater', {
                 'type': float,
-                'tag': 'grn_shape_ID', 'key': 'shape_ID',
+                'tag': 'grn_shape_ID', 'direct': True,
                 'min': 0.001,
                 'default': 2.0 * _in,
                 'step': 1E-3,
@@ -417,7 +512,7 @@ def main():
             })
             make_param('Outer diamater', {
                 'type': float,
-                'tag': 'grn_OD', 'key': 'OD',
+                'tag': 'grn_OD', 'direct': True,
                 'min': 0.001,
                 'default': 5.0 * _in,
                 'step': 1E-3,
@@ -425,7 +520,7 @@ def main():
             })
             make_param('Length', {
                 'type': float,
-                'tag': 'grn_L', 'key': 'L',
+                'tag': 'grn_L', 'direct': True,
                 'min': 0.001,
                 'default': 5.0 * _ft,
                 'step': 1E-2,
@@ -466,7 +561,7 @@ def main():
         with dpg.window(tag='nozzle', label='Nozzle', **settings):
             make_param('Discharge Coefficient', {
                 'type': float,
-                'tag': 'noz_Cd', 'key': 'Cd',
+                'tag': 'noz_Cd', 'direct': True,
                 'min': 0.01, 'max': 1.0,
                 'default': 0.9,
                 'step': 1E-2,
@@ -474,7 +569,7 @@ def main():
             })
             make_param('Efficiency', {
                 'type': float,
-                'tag': 'noz_eff', 'key': 'eff',
+                'tag': 'noz_eff', 'direct': True,
                 'min': 0.01, 'max': 1.0,
                 'default': 0.9,
                 'step': 1E-2,
@@ -482,18 +577,19 @@ def main():
             })
             make_param('Throat Diameter [m]', {
                 'type': float,
-                'tag': 'noz_throat',
+                'tag': 'noz_thrt',
                 'key': 'thrt',
                 'min': 0.001,
                 'default': 1.5 * _in,
                 'step': 1E-3,
                 'decimal': 3,
+                'man_call': man_call_noz_thrt,
             })
             make_param('Exit Diameter', {
                 'type': float,
                 'tag': 'noz_exit',
                 # 'key': None,
-                'min': 0.001,
+                # 'min': 0.001,
                 # 'default': 5.0,
                 'step': 1E-3,
                 'decimal': 5,
@@ -501,16 +597,16 @@ def main():
             })
             make_param('Exit/Throat Area Ratio', {
                 'type': float,
-                'tag': 'noz_AR', 'key': 'ER',
+                'tag': 'noz_ER', 'direct': True,
                 'min': 1.001,
                 'default': 5.0,
                 'step': 1E-1,
                 'decimal': 3,
-                'man_call': man_call_noz_AR,
+                'man_call': man_call_noz_ER,
             })
             # TODO: atm pressure, button to optimize (based on ss, mid liq?)!
         
-        with dpg.window(tag='Preview', label='Preview', **settings):
+        with dpg.window(tag='preview', label='Preview', **settings):
             # dpg.add_text('Bottom Right Section')
             # dpg.add_simple_plot(label='Simple Plot', min_scale=-1.0, max_scale=1.0, height=300, tag='plot')
             # create plot
@@ -526,89 +622,23 @@ def main():
                 dpg.add_line_series([], [], label='Trust', parent='y_axis', tag='series_tag')
         
     # part_configs = { 'cmbr': cmbr_config, 'noz': noz_config, 'tnk': tnk_config, 'grn': grain_config }
-    
+    # direct_tags = [ tag for tag in config if ('direct' in config[tag] and config[tag]['direct']) ]
     init_deps()
 
 
-    # with dpg.window(tag='Nozzle', label='Nozzle', **settings):
-        # dpg.add_text('Bottom Right Section')
 
-    # chem = scipy.io.loadmat('../../propellant_configs/HTPB.mat')
-    # import pkgutils
-    # data_dir = Path(pkgutils.resolve_name('hrap.tank').__file__).parent
-    # data_path = Path(data_dir , 'HTPB.mat')
-    chem = scipy.io.loadmat(hrap_root/'resources'/'propellant_configs'/'HTPB.mat')
-    
-    chem = chem['s'][0][0]
-    chem_OF = chem[1].ravel()
-    chem_Pc = chem[0].ravel()
-    chem_k = chem[2]
-    chem_M = chem[3]
-    chem_T = chem[4]
-
-    chem_interp_k = RegularGridInterpolator((chem_OF, chem_Pc), chem_k, fill_value=1.4)
-    chem_interp_M = RegularGridInterpolator((chem_OF, chem_Pc), chem_M, fill_value=29.0)
-    chem_interp_T = RegularGridInterpolator((chem_OF, chem_Pc), chem_T, fill_value=293.0)
-
-    # Initialization
-    tnk = make_sat_tank(
-        get_sat_nos_props,
-        V = (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
-        inj_CdA= 0.5 * (np.pi/4 * 0.5**2 * _in**2),
-        m_ox=1,#14.0, # TODO: init limit
-        # m_ox = 3.0,
-    )
-    # print('INJ TEST', 0.5 * (np.pi/4 * 0.5**2 * _in**2))
-
-    shape = make_circle_shape(
-        ID = 2.5 * _in,
-    )
-    grn = make_constOF_grain(
-        shape,
-        OF = 3.0,
-        OD = 5.0 * _in,
-        L = 4.0 * _ft,
-    )
-
-    cmbr = make_chamber(
-    )
-
-    noz = make_cd_nozzle(
-        thrt = 1.5 * _in, # Throat diameter
-        ER = 5.0,         # Exit/throat area ratio
-    )
-
-    s, x, method = core.make_engine(
-        tnk, grn, cmbr, noz,
-        chem_interp_k=chem_interp_k, chem_interp_M=chem_interp_M, chem_interp_T=chem_interp_T,
-        Pa=101e3,
-    )
-
-    fire_engine = core.make_integrator(
-        # core.step_rk4,
-        core.step_fe,
-        method,
-    )
-
-    # resize_windows()
-    dpg.set_viewport_resize_callback(resize_windows)
+    # resize_callback()
+    dpg.set_viewport_resize_callback(resize_callback)
     
     upd_max_fps = 4
     upd_wall_dT = 1 / upd_max_fps # minimum time between relevant engine updates
     upd_wall_t = time.time() - 2*upd_wall_dT # time of last update
-    upd_due = True
     
     max_fps = 24
     frame_wall_dT = 1/max_fps
-    
-
-    # dpg.add_text('Output')
-    # dpg.add_input_text(label='file name')
-    # dpg.add_button(label='Save', callback=save_callback)
-    # dpg.add_slider_float(label='float')
 
     dpg.show_viewport()
-    resize_windows()
+    resize_callback()
 
     _unpack_engine = jax.jit(partial(core.unpack_engine, method=method))
 
@@ -616,41 +646,7 @@ def main():
     fps_i = 0
     while dpg.is_dearpygui_running():
         wall_t = time.time()
-        # print('begin')
-        
-        # t1 = time.time()
-        # TODO: can be done in callbacks?
-        for part_name, part_config in part_configs.items():
-            for key, props in part_config.items():
-                val = dpg.get_value(props['uuid'])
-                if 'min' in props and val < props['min']:
-                    dpg.set_value(props['uuid'], props['min'])
-                if 'max' in props and val > props['max']:
-                    dpg.set_value(props['uuid'], props['max'])
-            
-            for value_config in part_config.values():
-                if 'key' in value_config:
-                    # print('set', part_name+'_'+value_config['key'], s[part_name+'_'+value_config['key']], '->', dpg.get_value(value_config['uuid']))
-                    k = part_name+'_'+value_config['key']
-                    v = dpg.get_value(value_config['uuid'])
-                    if k in s:
-                        if s[k] != v:
-                            s[k] = v
-                            upd_due = True
-                            print('update due to s', k)
-                    elif k in method['xmap']:
-                        if x[method['xmap'][k]] != v:
-                            print('update due to x', k)
-                            x = x.at[method['xmap'][k]].set(v)
-                            upd_due = True
-                    else:
-                        print('ERROR:', k, 'is nowhere!')
-        # t2 = time.time()
-        # print('v check took', t2-t1)
-        
-        
-        # s['noz_eff'] = dpg.get_value(noz_config['Efficiency']['uuid'])
-        # s['noz_thrt'] = dpg.get_value(noz_config['Throat Diameter [m]']['uuid'])
+
         if upd_due and wall_t - upd_wall_t >= upd_wall_dT:
             upd_due = False
             upd_wall_t = wall_t
