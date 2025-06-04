@@ -238,19 +238,35 @@ def get_impulse_class(value_Ns: float) -> str:
     
     return Iclass
 
-def export_rse(out_file, series, OD, L, D_throat, D_exit, motor_type='liquid', mfg='SSTA'):
-    t, F, prop_mdot, m, Cg = [series[k] for k in ['t', 'F', 'prop_mdot', 'm', 'Cg']]
-    
-    # TODO: downsample
-    # TODO: autocut?
-    
+def export_rse(
+    out_file,
+    t, F, prop_mdot, m, Cg,
+    OD, L, D_throat, D_exit,
+    motor_type, mfg,
+    O_t = 400, # Rough export entry count
+):
+    i_max = np.argmax(F); F_max = F[i_max]
+
+    # Cut tail (below 0.1% max thrust, implicitly optimistically assume any negative thrust is non physical)
+    i_cut = np.argwhere(F > 0.001*F_max)
+    if i_cut.size > 0:
+        i_cut = i_max + i_cut[-1,0]
+        t, F, prop_mdot, m, Cg = [arr[:i_cut+1] for arr in [t, F, prop_mdot, m, Cg]]
+
     Itot = np.trapezoid(F, t)
     prop_burnt = np.trapezoid(prop_mdot, t) # not m[0] - m[-1] due to potential venting etc.
-    F_max = np.max(F)
     T_burn = t[-1] - t[0]
-    
+
     Isp = Itot / (prop_burnt*9.81)
     F_avg = Itot / T_burn
+
+    # Issue: this assumes t is linspace, should just filter then do lazily...
+    # # Decimate to keep file small, with a filter to avoid aliasing any high rate behavior
+    # R_dec = int(t.size / O_t)
+    # if R_dec > 1:
+    #     t = np.linspace(t[0], t[-1], int(t.size / R_dec))
+    #     # Renormalize thrust to exactly match impulse (should already be very close)
+    #     F /= 
     
     with open(out_file, 'w') as f:
         f.write('<engine-database>\n    <engine-list>\n')
