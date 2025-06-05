@@ -5,11 +5,24 @@ For the MATLAB version, navigate to the "Installers/MATLAB version" directory. P
 
 A Python version is also in progress but not complete yet.
 
-The Hybrid Rocket Analysis Program (HRAP) was developed by Robert Nickel for use by the University of Tennessee Rocket Engineering Team. HRAP is a versatile tool utilizing a thermodynamic equilibrium model for  simulation of self-pressurizing hybrid rocket motors, specifically those powered with Nitrous Oxide stored as a saturated liquid-vapor mixture. 
+The Hybrid Rocket Analysis Program (HRAP) was developed by Robert Nickel for use by the University of Tennessee Rocket Engineering Team (part of the Student Space Technology Association at UTK). HRAP is a versatile tool utilizing a thermodynamic equilibrium model for  simulation of self-pressurizing hybrid rocket motors, specifically those powered with Nitrous Oxide stored as a saturated liquid-vapor mixture. 
 
 ## Call for volunteers!
 
 In its current state this program can model an adiabatic oxidizer tank and combustion chamber and an isentropic nozzle, along with semi-empirical correction factors such as combustion/nozzle efficiency. HRAP also allows the exporting of a .RSE engine file for use in OpenRocket or RockSim, which allows not only the mass of the motor to be captured but also the approximate center of mass of the motor.
+
+Validation Cases:
+![image](https://github.com/user-attachments/assets/4e048de8-12b3-4299-89f5-ec4241b3ccb2)
+Baltic Space HyPEx hot fire (r/rocketry user FlyingBanana)
+
+![image](https://github.com/user-attachments/assets/63330cf6-2fe3-4712-a0ec-310baa33e389)
+Equatorial Space Systems 750 N subscale demonstrator (James Anderson)
+
+![image](https://github.com/user-attachments/assets/508ee5ae-4a46-4c41-8743-3ec823128cfe)
+Student Space Technology Association 38mm Subscale Motor
+
+![image](https://github.com/user-attachments/assets/89afa8e9-32a9-4057-92d3-aaae7cde900f)
+Student Space Technology Association 127mm Flight Motor
 
 HRAP could be significantly improved by some helpful volunteers in the following categories: 
 - Non-equilibrium tank model
