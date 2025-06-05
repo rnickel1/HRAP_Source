@@ -42,11 +42,106 @@ def get_datadir() -> Path:
         return home / 'Library/Application Support'
 
 # Global vars, issues unless declared outside of main
+hrap_root    = None
 active_file  = None
+config       = { }
 upd_due      = True
 s, x, method = [None]*3
+fire_engine  = None
 
-def load_preset_chem(hrap_root, name):
+def clamped_param(val, props):
+    if 'min' in props and val < props['min']:
+        return [props['min']]*2
+    elif 'max' in props and val > props['max']:
+        return [props['max']]*2
+    return val, None
+
+def upd_direct_param(k): # TODO: no clam version
+    global upd_due, x
+
+    v = dpg.get_value(k)
+    if k in s:
+        if s[k] != v:
+            s[k] = v
+            upd_due = True
+            print('update due to s', k)
+    elif k in method['xmap']:
+        # print(k, x[method['xmap'][k]], v)
+        if x[method['xmap'][k]] != v:
+            print('update due to x', k)
+            x = x.at[method['xmap'][k]].set(v)
+            upd_due = True
+    else:
+        print('ERROR:', k, 'is nowhere!')
+
+def upd_param(tag):
+    props = config[tag]
+    v, clam = clamped_param(dpg.get_value(tag), props)
+    if clam != None: dpg.set_value(tag, clam)
+    if props['direct']: upd_direct_param(tag)
+    return clam
+
+def set_param(tag, val):
+    dpg.set_value(tag, float(val))
+    return upd_param(tag)
+
+# Callbacks for manual adjustments (gets sets the UI components, not the motor)
+def man_call_tnk_D():
+    D, L, T, fill = [dpg.get_value(tag) for tag in ['tnk_D', 'tnk_L', 'tnk_T', 'tnk_fill']]
+    props = get_sat_props(T)
+    V = np.pi/4 * D**2 * L
+    print('TANK', V, D, L)
+    set_param('tnk_V', V)
+    set_param('tnk_m_ox', fill/100.0 * props['rho_l'] * V)
+
+man_call_tnk_L = man_call_tnk_D
+
+def man_call_tnk_V():
+    V, D, T, fill = [dpg.get_value(tag) for tag in ['tnk_V', 'tnk_D', 'tnk_T', 'tnk_fill']]
+    props = get_sat_props(T)
+    set_param('tnk_L', V / (np.pi/4 * D**2))
+    set_param('tnk_m_ox', fill/100.0 * props['rho_l'] * V)
+
+def man_call_tnk_T():
+    T, V, fill = [dpg.get_value(tag) for tag in ['tnk_T', 'tnk_V', 'tnk_fill']]
+    props = get_sat_props(T)
+    set_param('tnk_P', props['Pv'])
+    set_param('tnk_m_ox', fill/100.0 * props['rho_l'] * V)
+
+def man_call_tnk_P():
+    pass
+
+def man_call_tnk_m_ox():
+    T, V, m = [dpg.get_value(tag) for tag in ['tnk_T', 'tnk_V', 'tnk_m_ox']]
+    props = get_sat_props(T)
+    fill_clam = set_param('tnk_fill', 100.0 * m / (props['rho_l'] * V))
+    if fill_clam != None: set_param('tnk_m_ox', fill_clam/100.0 * props['rho_l'] * V)
+
+def man_call_tnk_fill():
+    T, V, fill = [dpg.get_value(tag) for tag in ['tnk_T', 'tnk_V', 'tnk_fill']]
+    props = get_sat_props(T)
+    set_param('tnk_m_ox', fill/100.0 * props['rho_l'] * V)
+
+def man_call_noz_thrt():
+    D_throat, ER = [dpg.get_value(tag) for tag in ['noz_thrt', 'noz_ER']]
+    set_param('noz_exit', np.sqrt(ER * D_throat**2))
+
+def man_call_noz_D_exit():
+    D_throat, D_exit = [dpg.get_value(tag) for tag in ['noz_thrt', 'noz_exit']]
+    ER_clam = set_param('noz_ER', D_exit**2/D_throat**2)
+    if ER_clam != None: set_param('noz_exit', np.sqrt(ER_clam * D_throat**2))
+
+def man_call_noz_ER():
+    ER, D_throat = [dpg.get_value(tag) for tag in ['noz_ER', 'noz_thrt']]
+    set_param('noz_exit', np.sqrt(ER * D_throat**2))
+
+def init_deps(): # Called after init/load to verify consistency
+    man_call_tnk_D()
+    man_call_tnk_T()
+    # man_call_ox_m()
+    man_call_noz_ER()
+
+def load_preset_chem(name):
     chem = scipy.io.loadmat(hrap_root/'resources'/'propellant_configs'/name)
     
     chem = chem['s'][0][0]
@@ -60,7 +155,7 @@ def load_preset_chem(hrap_root, name):
 
     return chem_interp_k, chem_interp_M, chem_interp_T
 
-def setup_motor(chem_interp_k, chem_interp_M, chem_interp_T):
+def setup_motor(tnk_inj_vap_model, tnk_inj_liq_model, chem_interp_k, chem_interp_M, chem_interp_T):
     # Initialization
     tnk = make_sat_tank(
         get_sat_nos_props,
@@ -68,6 +163,8 @@ def setup_motor(chem_interp_k, chem_interp_M, chem_interp_T):
         inj_CdA= 0.5 * (np.pi/4 * 0.5**2 * _in**2),
         m_ox=1,#14.0, # TODO: init limit
         # m_ox = 3.0,
+        inj_vap_model = core.StaticVar(tnk_inj_vap_model),
+        inj_liq_model = core.StaticVar(tnk_inj_liq_model),
     )
     # print('INJ TEST', 0.5 * (np.pi/4 * 0.5**2 * _in**2))
 
@@ -105,8 +202,19 @@ def setup_motor(chem_interp_k, chem_interp_M, chem_interp_T):
     
     return s, x, method, fire_engine
 
+def recompile_motor():
+    global upd_due, s, x, method, fire_engine
+    # TOOD: skip recompile if combo already in some dict
+    chem_info = load_preset_chem('HTPB.mat')
+    s, x, method, fire_engine = setup_motor(dpg.get_value('tnk_inj_vap_model'), dpg.get_value('tnk_inj_liq_model'), *chem_info)
+    upd_due = True
+    # Need to respecify all internal variables based on config
+    for tag, props in config.items():
+        if props['direct']: upd_direct_param(tag)
+    init_deps()
+
 def main():
-    global upd_due, s, x, method
+    global hrap_root, config, upd_due #, s, x, method
 
     print('beginning w/ hrap version', hrap_version)
     jax.config.update('jax_enable_x64', True)
@@ -186,12 +294,6 @@ def main():
     
 
 
-    # Create initial internal motor
-    chem_info = load_preset_chem(hrap_root, 'HTPB.mat')
-    s, x, method, fire_engine = setup_motor(*chem_info)
-    
-
-
     # dpg.set_viewport_vsync(True)
 
     # TODO: use that this also gets called on move to set intial pos
@@ -225,99 +327,6 @@ def main():
 
     # First row
     settings = { 'no_move': True, 'no_collapse': True, 'no_resize': True, 'no_close': True }
-    
-    config = { }
-    def clamped_param(val, props):
-        if 'min' in props and val < props['min']:
-            return [props['min']]*2
-        elif 'max' in props and val > props['max']:
-            return [props['max']]*2
-        return val, None
-
-    def upd_direct_param(k): # TODO: no clam version
-        global upd_due, x
-
-        v = dpg.get_value(k)
-        if k in s:
-            if s[k] != v:
-                s[k] = v
-                upd_due = True
-                print('update due to s', k)
-        elif k in method['xmap']:
-            # print(k, x[method['xmap'][k]], v)
-            if x[method['xmap'][k]] != v:
-                print('update due to x', k)
-                x = x.at[method['xmap'][k]].set(v)
-                upd_due = True
-        else:
-            print('ERROR:', k, 'is nowhere!')
-    
-    def upd_param(tag):
-        props = config[tag]
-        v, clam = clamped_param(dpg.get_value(tag), props)
-        if clam != None: dpg.set_value(tag, clam)
-        if props['direct']: upd_direct_param(tag)
-        return clam
-
-    def set_param(tag, val):
-        dpg.set_value(tag, float(val))
-        return upd_param(tag)
-    
-    # Callbacks for manual adjustments (gets sets the UI components, not the motor)
-    def man_call_tnk_D():
-        D, L, T, fill = [dpg.get_value(tag) for tag in ['tnk_D', 'tnk_L', 'tnk_T', 'tnk_fill']]
-        props = get_sat_props(T)
-        V = np.pi/4 * D**2 * L
-        print('TANK', V, D, L)
-        set_param('tnk_V', V)
-        set_param('tnk_m_ox', fill/100.0 * props['rho_l'] * V)
-    
-    man_call_tnk_L = man_call_tnk_D
-    
-    def man_call_tnk_V():
-        V, D, T, fill = [dpg.get_value(tag) for tag in ['tnk_V', 'tnk_D', 'tnk_T', 'tnk_fill']]
-        props = get_sat_props(T)
-        set_param('tnk_L', V / (np.pi/4 * D**2))
-        set_param('tnk_m_ox', fill/100.0 * props['rho_l'] * V)
-    
-    def man_call_tnk_T():
-        T, V, fill = [dpg.get_value(tag) for tag in ['tnk_T', 'tnk_V', 'tnk_fill']]
-        props = get_sat_props(T)
-        set_param('tnk_P', props['Pv'])
-        set_param('tnk_m_ox', fill/100.0 * props['rho_l'] * V)
-    
-    def man_call_tnk_P():
-        pass
-    
-    def man_call_tnk_m_ox():
-        T, V, m = [dpg.get_value(tag) for tag in ['tnk_T', 'tnk_V', 'tnk_m_ox']]
-        props = get_sat_props(T)
-        fill_clam = set_param('tnk_fill', 100.0 * m / (props['rho_l'] * V))
-        if fill_clam != None: set_param('tnk_m_ox', fill_clam/100.0 * props['rho_l'] * V)
-    
-    def man_call_tnk_fill():
-        T, V, fill = [dpg.get_value(tag) for tag in ['tnk_T', 'tnk_V', 'tnk_fill']]
-        props = get_sat_props(T)
-        set_param('tnk_m_ox', fill/100.0 * props['rho_l'] * V)
-    
-    def man_call_noz_thrt():
-        D_throat, ER = [dpg.get_value(tag) for tag in ['noz_thrt', 'noz_ER']]
-        set_param('noz_exit', np.sqrt(ER * D_throat**2))
-
-    def man_call_noz_D_exit():
-        D_throat, D_exit = [dpg.get_value(tag) for tag in ['noz_thrt', 'noz_exit']]
-        ER_clam = set_param('noz_ER', D_exit**2/D_throat**2)
-        if ER_clam != None: set_param('noz_exit', np.sqrt(ER_clam * D_throat**2))
-    
-    def man_call_noz_ER():
-        ER, D_throat = [dpg.get_value(tag) for tag in ['noz_ER', 'noz_thrt']]
-        set_param('noz_exit', np.sqrt(ER * D_throat**2))
-    
-    def init_deps(): # Called after init/load to verify consistency
-        man_call_tnk_D()
-        man_call_tnk_T()
-        # man_call_ox_m()
-        man_call_noz_ER()
 
     def make_param(title, props):
         config[props['tag']] = props
@@ -355,6 +364,22 @@ def main():
         print('saving as', active_file)
         save_config(active_file)
         # print('save as', app_data)
+    
+    def export_rse_callback(sender, app_data):
+        core.save_rse(
+            app_data['file_path_name'],
+            t, noz['thrust'], noz['mdot'], t*0, t*0,
+            OD=OD, L=L, D_throat=s['noz_thrt'], D_exit=np.sqrt(s['noz_ER'])*s['noz_thrt'],
+            motor_type='hybrid', mfg=dpg.get_value('mfg'),
+        )
+    
+    def export_eng_callback(sender, app_data):
+        core.save_eng(
+            app_data['file_path_name'],
+            t, noz['thrust'], t*0,
+            OD=OD, L=L,
+            mfg=dpg.get_value('mfg'),
+        )
 
     def key_press_handler(sender, app_data):
         global active_file
@@ -373,9 +398,9 @@ def main():
             #     dpg.add_selectable(label='bookmark 1')
             #     dpg.add_selectable(label='bookmark 2')
             #     dpg.add_selectable(label='bookmark 3')
-        with dpg.file_dialog(tag='save_rse', default_filename='', directory_selector=False, show=False, width=700 ,height=400):
+        with dpg.file_dialog(tag='save_rse', default_filename='', directory_selector=False, show=False, width=700 ,height=400, callback=export_rse_callback):
             dpg.add_file_extension('.rse')
-        with dpg.file_dialog(tag='save_eng', default_filename='', directory_selector=False, show=False, width=700 ,height=400):
+        with dpg.file_dialog(tag='save_eng', default_filename='', directory_selector=False, show=False, width=700 ,height=400, callback=export_eng_callback):
             dpg.add_file_extension('.eng')
         
         with dpg.menu_bar():
@@ -387,7 +412,7 @@ def main():
                 dpg.add_menu_item(label='Export RSE', callback=lambda: dpg.show_item('save_rse'))
                 dpg.add_menu_item(label='Export ENG', callback=lambda: dpg.show_item('save_eng'))
             with dpg.menu(label='Config'):
-                dpg.add_input_text(label='Manufacturer')
+                dpg.add_input_text(label='Manufacturer', tag='mfg', default_value='HRAP')
             with dpg.menu(label='Theme'):
                 def apply_theme_callback(sender, app_data, user_data): apply_theme(user_data, True)
                 for theme in themes: dpg.add_menu_item(label=theme, callback=apply_theme_callback, user_data=theme)
@@ -396,6 +421,8 @@ def main():
         
         # Make tank window
         with dpg.window(tag='tank', label='Tank', **settings):
+            dpg.add_combo(label='Injector Vapor Model', tag='tnk_inj_vap_model', items=['Real Gas', 'Incompressible'], default_value='Real Gas', callback=recompile_motor)
+            dpg.add_combo(label='Injector Liquid Model', tag='tnk_inj_liq_model', items=['Incompressible'], default_value='Incompressible', callback=recompile_motor)
             make_param('Inner Diameter', {
                 'type': float,
                 'tag': 'tnk_D',
@@ -620,12 +647,13 @@ def main():
 
                 # series belong to a y axis
                 dpg.add_line_series([], [], label='Trust', parent='y_axis', tag='series_tag')
-        
+    
+    # Create initial internal motor
+    recompile_motor()
+
     # part_configs = { 'cmbr': cmbr_config, 'noz': noz_config, 'tnk': tnk_config, 'grn': grain_config }
     # direct_tags = [ tag for tag in config if ('direct' in config[tag] and config[tag]['direct']) ]
     init_deps()
-
-
 
     # resize_callback()
     dpg.set_viewport_resize_callback(resize_callback)

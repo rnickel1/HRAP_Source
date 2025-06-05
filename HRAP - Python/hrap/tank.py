@@ -1,4 +1,4 @@
-from hrap.core import store_x, make_part
+from hrap.core import store_x, make_part, StaticVar
 
 import jax
 import jax.numpy as jnp
@@ -134,20 +134,26 @@ def d_sat_tank(s, x, xmap, get_sat_props):
     #         inj_CdA*inj_N*jnp.sqrt(2*rho_l*dP),
     #     m_vap, inj_CdA, inj_N, T, ox['Z'], Mcc, rho_l, dP
     # )
+    # Select injector models at compile time
+    def inj_liq_model(m_vap, inj_NCdA, T, Z, Mcc, rho_l, rho_v, dP):
+        if s['tnk_inj_liq_model'] == 'Incompressible':
+            return inj_NCdA*jnp.sqrt(2*rho_l*dP)
+    def inj_vap_model(inj_NCdA, T, Z, Mcc, dP, rho_v):
+        if s['tnk_inj_vap_model'] == 'Incompressible':
+            return inj_NCdA*jnp.sqrt(2*rho_v*dP)
+        elif s['tnk_inj_vap_model'] == 'Real Gas':
+            return (inj_NCdA*Pt/jnp.sqrt(T))*jnp.sqrt(1.31/(Z*188.91))*Mcc*(1+(0.31)/2*Mcc**2)**(-2.31/0.62)
+
     mdot_inj = cond(
         m_liq <= 1E-3,
-        lambda m_vap, inj_CdA, inj_N, T, Z, Mcc, rho_l, rho_v, dP: cond(
+        lambda m_vap, inj_NCdA, T, Z, Mcc, rho_l, rho_v, dP: cond(
             m_vap <= 0.0,
-            lambda *vargs:
-                0.0,
-            lambda inj_CdA, inj_N, T, Z, Mcc, dP, rho_v:
-                inj_CdA*inj_N*jnp.sqrt(2*rho_v*dP),
-                # (inj_CdA*inj_N*Pt/jnp.sqrt(T))*jnp.sqrt(1.31/(Z*188.91))*Mcc*(1+(0.31)/2*Mcc**2)**(-2.31/0.62),
-            inj_CdA, inj_N, T, ox['Z'], Mcc, dP, rho_v
+            lambda *vargs: 0.0,
+            lambda *vargs: inj_vap_model(*vargs),
+            inj_NCdA, T, ox['Z'], Mcc, dP, rho_v
         ),
-        lambda m_vap, inj_CdA, inj_N, T, Z, Mcc, rho_l, rho_v, dP:
-            inj_CdA*inj_N*jnp.sqrt(2*rho_l*dP),
-        m_vap, inj_CdA, inj_N, T, ox['Z'], Mcc, rho_l, rho_v, dP
+        lambda *vargs: inj_liq_model(*vargs),
+        m_vap, inj_N*inj_CdA, T, ox['Z'], Mcc, rho_l, rho_v, dP
     )
     # jax.debug.print("INJ Debug {a} {b} {x} {y} {c} {d} {e} {f}", a=m_liq, b=m_vap, x=Pt, y=T, c=ox['Z'], d=Mcc, e=mdot_inj, f=(inj_CdA*inj_N*Pt/jnp.sqrt(T))*jnp.sqrt(1.31/(ox['Z']*188.91))*Mcc*(1+(0.31)/2*Mcc**2)**(-2.31/0.62))
     
@@ -210,6 +216,8 @@ def make_sat_tank(get_sat_props, **kwargs):
             'vnt_CdA': 0.0,
             'inj_CdA': 0.0,
             'inj_N': 1,
+            'inj_vap_model': StaticVar('Incompressible'),
+            'inj_liq_model': StaticVar('Incompressible'),
         },
         x = {
             'T':   293.0,

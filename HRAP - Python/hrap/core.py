@@ -1,9 +1,29 @@
 import time
+from functools import partial
+from dataclasses import dataclass
 
 import numpy as np
 
 import jax
 import jax.numpy as jnp
+
+# Simply a container for a single static variable
+@partial(jax.tree_util.register_dataclass,
+    data_fields=[],
+    meta_fields=['v'])
+@dataclass
+class StaticVar(object):
+    v: any
+    
+    def __int__ (self): return int (self.v)
+    def __str__ (self): return str (self.v)
+    def __hash__(self): return hash(self.v)
+
+    def __eq__(self, other):
+        if isinstance(other, StaticVar):
+            return self.v == other.v
+        else:
+            return self.v == other
 
 
 
@@ -238,12 +258,22 @@ def get_impulse_class(value_Ns: float) -> str:
     
     return Iclass
 
+def bin_resample_series(t, t_bins, *v):
+    Ibin = np.searchsorted(bins, t) # Bin index of each bin
+    Nbin = np.bincount(Ibin) # Number of samples in each bin
+    it = np.argwhere(Nbin > 0.0)
+    # Average quantity in each bin and remove bins with no samples
+    # TODO: better to weight by incoming time step size if nonuniform to preserve impulse
+    w = [(np.bincount(Ibin, y) / Nbin)[it] for y in v]
+
+    return bins[it], *w
+
 def export_rse(
     out_file,
     t, F, prop_mdot, m, Cg,
     OD, L, D_throat, D_exit,
     motor_type, mfg,
-    O_t = 400, # Rough export entry count
+    Nt_max = 200, # Maximum export entry count
 ):
     i_max = np.argmax(F); F_max = F[i_max]
 
@@ -260,13 +290,24 @@ def export_rse(
     Isp = Itot / (prop_burnt*9.81)
     F_avg = Itot / T_burn
 
-    # Issue: this assumes t is linspace, should just filter then do lazily...
-    # # Decimate to keep file small, with a filter to avoid aliasing any high rate behavior
-    # R_dec = int(t.size / O_t)
-    # if R_dec > 1:
-    #     t = np.linspace(t[0], t[-1], int(t.size / R_dec))
-    #     # Renormalize thrust to exactly match impulse (should already be very close)
-    #     F /= 
+    # TODO: uneven binning to minimize error (at sharp features)
+    # Decimate to keep file small, with a filter to avoid aliasing any high rate behavior
+    if t.size > Nt_max:
+        T_start, Nt_start = 0.1, Nt_max//10
+        # Use new spacing as bins and average values within nonempty bins
+        bins = np.concatenate([np.linspace(0.0, T_start, Nt_start, endpoint=False), np.linspace(T_start, T_burn, Nt_max - Nt_start)])
+        t, F, prop_mdot, m, Cg = bin_resample_series(t, bins, F, prop_mdot, m, Cg)
+        
+    # Add proceeding zero point and shift then add succeeding zero point (if each not present)
+    # This prevents 
+    if F[0] != 0.0:
+        t += 1E-4
+        t, F, prop_mdot, m, Cg = [np.insert(arr, 0, val) for arr, val in [[F, 0.0], [prop_mdot, 0.0], [m, m[0]], [Cg, Cg[0]]]]
+    if F[-1] != 0.0:
+        t, F, prop_mdot, m, Cg = [np.append(arr,    val) for arr, val in [[F, 0.0], [prop_mdot, 0.0], [m, m[-1]], [Cg, Cg[-1]]]]
+    
+    # Renormalize thrust to exactly match impulse (may have been altered slightly by resampling without weighting)
+    F *= Itot / np.trapezoid(F, t)
     
     with open(out_file, 'w') as f:
         f.write('<engine-database>\n    <engine-list>\n')
@@ -288,17 +329,23 @@ def export_rse(
                         Cg=Cg[i]*1000.0, F=np.max([0.0, F[i]]), m=m[i]*1000.0, t=t[i]))
         f.write('    </data>\n    </engine>\n    </engine-list>\n</engine-database>')
 
-def export_eng(out_file, series, OD, L, mfg='SSTA'):
-    t, F, m = [series[k] for k in ['t', 'F', 'm']]
-    # TODO: properly downsample!
-    
-    Itot = np.trapezoid(F, t)
-    T_burn = t[-1] - t[0]
-    
-    F_avg = Itot / T_burn
+def export_eng(
+    out_file,
+    t, F, m,
+    OD, L,
+    mfg,
+):
+    Itot, T_burn = np.trapezoid(F, t), t[-1] - t[0]    
+
+    # Downsample data using bin averaging
+    bins = np.linspace(0.0, T_burn, 32)
+    t, F = bin_resample_series(t, bins, F)
+
+    # Last bin always set to 0 as per eng requirements then renormalize thrust to correct impulse
+    F[-1] = 0.0
+    F *= Itot / np.trapezoid(F, t)
     
     with open(out_file, 'w') as f:
-        f.write('{mfg} {OD} {L} P {propWt} {m0} {code}{F_avg_i}\n'.format(mfg=mfg, OD=1000.0 * OD, L=1000.0 * L, propWt=m[0] - m[-1], m0=m[0], code=get_impulse_class(Itot), F_avg_i=int(np.round(F_avg))))
-    for i in range(31):
-        f.write(' {t} {F} \n'.format(t=t[i * t.size//31], F=F[i * t.size//31]))
-    f.write(' {t} 0.0 \n'.format(t=t[-1]))
+        f.write('{mfg} {OD} {L} P {propWt} {m0} {code}{F_avg}\n'.format(mfg=mfg, OD=1000.0 * OD, L=1000.0 * L, propWt=m[0] - m[-1], m0=[0], code=get_impulse_class(Itot), F_avg=int(np.round(Itot / T_burn))))
+        for i in range(32):
+            f.write(' {t} {F} \n'.format(t=t[i], F=F[i]))

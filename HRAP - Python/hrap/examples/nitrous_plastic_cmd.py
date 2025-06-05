@@ -180,6 +180,24 @@ tnk, grn, cmbr, noz = core.unpack_engine(s, xstack, method)
 #         print(key+':', val)
 #     print()
 
+# Ensure results folder exists
+results_path = Path('./results')
+results_path.mkdir(parents=True, exist_ok=True)
+
+OD, L = 5*_in, 10*_ft
+core.save_rse(
+    results_path/'nitrous_plastic.rse',
+    t, noz['thrust'], noz['mdot'], t*0, t*0,
+    OD=OD, L=L, D_throat=s['noz_thrt'], D_exit=np.sqrt(s['noz_ER'])*s['noz_thrt'],
+    motor_type='hybrid', mfg='HRAP',
+)
+core.save_eng(
+    results_path/'nitrous_plastic.eng',
+    t, noz['thrust'], t*0,
+    OD=OD, L=L,
+    mfg='HRAP',
+)
+
 
 
 # Visualization
@@ -250,7 +268,6 @@ axs[0].legend()
 # fig.show()
 
 # Save plot
-Path('./results').mkdir(parents=True, exist_ok=True)
-fig.savefig(str(f'./results/nitrous_plastic_plots')+'.pdf', format='pdf', bbox_inches='tight', pad_inches=0.1)
+fig.savefig(results_path/'nitrous_plastic_plots.pdf', format='pdf', bbox_inches='tight', pad_inches=0.1)
 
 plt.show()
