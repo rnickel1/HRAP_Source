@@ -144,10 +144,17 @@ def init_deps(): # Called after init/load to verify consistency
 def load_preset_chem(name):
     chem = scipy.io.loadmat(hrap_root/'resources'/'propellant_configs'/name)
     
+    # print(chem.keys())
+    # print(chem['s'][0][0]['opt_OF'])
     chem = chem['s'][0][0]
-    chem_OF = chem[1].ravel()
-    chem_Pc = chem[0].ravel()
-    chem_k, chem_M, chem_T = chem[2], chem[3], chem[4]
+    # Plastisol: gamma, m, name, OF, temp, ?, ?, T
+    chem_OF = chem['prop_OF'].ravel()
+    chem_Pc = chem['prop_Pc'].ravel()
+    chem_k, chem_M, chem_T = chem['prop_k'], chem['prop_M'], chem['prop_T']
+    # opt_OF, prop_Rho, prop_nm, prop_Reg
+    # print(chem)
+    # print(chem_OF.shape, chem_Pc.shape, chem_k.shape, chem_M.shape, chem_T.shape, chem_k[0])
+    if chem_k.size == 1: chem_k = np.full_like(chem_T, chem_k.item())
 
     chem_interp_k = RegularGridInterpolator((chem_OF, chem_Pc), chem_k, fill_value=1.4)
     chem_interp_M = RegularGridInterpolator((chem_OF, chem_Pc), chem_M, fill_value=29.0)
@@ -205,7 +212,10 @@ def setup_motor(tnk_inj_vap_model, tnk_inj_liq_model, chem_interp_k, chem_interp
 def recompile_motor():
     global upd_due, s, x, method, fire_engine
     # TOOD: skip recompile if combo already in some dict
-    chem_info = load_preset_chem('HTPB.mat')
+    gcm = dpg.get_value('select_grain_chem_mode')
+    if gcm == 'HRAP Presets':
+        print(dpg.get_value('select_grain_chem_hrap_presets')+'.mat')
+        chem_info = load_preset_chem(dpg.get_value('select_grain_chem_hrap_presets')+'.mat')
     s, x, method, fire_engine = setup_motor(dpg.get_value('tnk_inj_vap_model'), dpg.get_value('tnk_inj_liq_model'), *chem_info)
     upd_due = True
     # Need to respecify all internal variables based on config
@@ -511,6 +521,12 @@ def main():
 
             dpg.add_text('Regression')
             dpg.add_combo(label='Rate Law', tag='select_regression', items=['Constant O/F', 'Regression Rate'], default_value='Constant O/F')
+
+            dpg.add_text('Chemistry')
+            dpg.add_combo(label='Mode', tag='select_grain_chem_mode', items=['HRAP Presets', 'Other Preset', 'Custom'], default_value='HRAP Presets')
+            dpg.add_combo(label='Preset', tag='select_grain_chem_hrap_presets', items=[
+                'ABS', 'Asphalt', 'HDPE', 'HTPB_Paraffin', 'HTPB', 'Metalized_Plastisol', 'Paraffin', 'Sorbitol',
+            ], default_value='HTPB', callback=recompile_motor)
             # show_item, hide_item
             
             make_param('Fixed O/F ratio', {
@@ -646,7 +662,7 @@ def main():
                 dpg.add_plot_axis(dpg.mvYAxis, label='Thrust (N)', tag='y_axis')
 
                 # series belong to a y axis
-                dpg.add_line_series([], [], label='Trust', parent='y_axis', tag='series_tag')
+                dpg.add_line_series([], [], label='Thrust', parent='y_axis', tag='series_tag')
     
     # Create initial internal motor
     recompile_motor()
