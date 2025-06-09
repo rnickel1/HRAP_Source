@@ -3,22 +3,30 @@ First install Python https://www.python.org/downloads/.
 
 Then open your terminal and execute:
 
+```
 python -m pip install --upgrade pip
 
 python -m pip install hrap
+```
 
 To update hrap when new features become available, simply run
 
+```
 python -m pip install --upgrade hrap
+```
 
 To uninstall hrap,
 
+```
 python -m pip uninstall hrap
+```
 
 ## Running HRAP
 To start the GUI, simply run the command from any directory:
 
+```
 hrap
+```
 
 If you are interested in advanced usage such as design optimization, uncertainty quantification, etc. then scripting with the Python interface is recommended.
 See the "HRAP - Python/hrap/examples" directories for a few examples.
@@ -39,8 +47,10 @@ This is an alternative to "User Installation." Please uninstall hrap or use a ne
 
 After cloning the repo,
 
+```
 cd "HRAP_JAX/HRAP - Python/"
 
 pip install -e ./
+```
 
 You can now run the GUI as usual. Your local modifications to the hrap code will be reflected.

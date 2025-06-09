@@ -573,7 +573,7 @@ class ChemSolver:
         result.M = 1/x.n
         result.R = Rhat / result.M
         
-        print(f'result T={result.T}, M={result.M}')
+        print(f'result (took {iter} iters): T={result.T}, M={result.M}')
 
         N_dof = x.N_elem + x.N_cond + 1
         dP, dT = np.zeros(N_dof), np.zeros(N_dof)

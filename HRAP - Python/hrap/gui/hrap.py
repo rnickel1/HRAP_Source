@@ -1,6 +1,5 @@
 import os
 import sys
-# sys.path.insert(1, '../HRAP/')
 import time
 from pathlib import Path
 import pickle as pkl
@@ -22,7 +21,7 @@ from hrap.nozzle  import *
 from hrap.sat_nos import *
 from hrap.units   import _in, _ft
 
-from hrap.examples.gui_themes import create_babber_theme
+from hrap.gui.themes import create_babber_theme
 from dearpygui_ext.themes import create_theme_imgui_light, create_theme_imgui_dark
 
 from hrap.sat_nos import get_sat_nos_props
@@ -287,7 +286,7 @@ def main():
     # See https://github.com/hoffstadt/DearPyGui
 
     dpg.create_context()
-    dpg.create_viewport(title='HRAP', width=settings['view_w'], height=settings['view_h'], x_pos=settings['view_x'], y_pos=settings['view_y']) # small_icon='a.ico', large_icon='\a.ico'
+    dpg.create_viewport(title='HRAP', width=settings['view_w'], height=settings['view_h'], x_pos=settings['view_x'], y_pos=settings['view_y'], small_icon=str(hrap_root/'resources'/'icon.ico'))#, large_icon='\a.ico'
     dpg.setup_dearpygui()
     dpg.set_viewport_vsync(False)
 

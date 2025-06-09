@@ -30,5 +30,5 @@ description = "HRAP is a versatile tool for simulation of hybrid rocket engines.
 Homepage = "https://github.com/rnickel1/HRAP_Source"
 
 [project.scripts]
-hrap = "hrap.examples.nitrous_hybrid_gui:main"
+hrap = "hrap.gui.hrap:main"
 #__main__ = "hrap.examples.nitrous_hybrid_gui:main"

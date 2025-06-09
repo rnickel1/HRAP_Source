@@ -16,7 +16,7 @@ from hrap.grain   import *
 from hrap.chamber import *
 from hrap.nozzle  import *
 from hrap.sat_nos import *
-from hrap.units   import _in, _ft, _lbf
+from hrap.units   import _in, _ft, _lbf, _atm
 
 jax.config.update("jax_enable_x64", True)
 # np.random.seed(42)
@@ -58,6 +58,7 @@ jax.config.update("jax_enable_x64", True)
 
 # print(f"Equilibrium Temperature: {gas.T:.2f} K")
 
+print('Initializing chemistry...')
 plastisol = chem.make_basic_reactant(
     formula = 'Plastisol-362',
     composition = { 'C': 7.200, 'H': 10.82, 'O': 1.14, 'Cl': 0.669 },
@@ -66,9 +67,16 @@ plastisol = chem.make_basic_reactant(
     h0 = -265357.55, # J/mol
 )
 
-chem.ChemSolver(['./ssts_thermochem.txt', plastisol])
-
-
+comb = chem.ChemSolver(['./ssts_thermochem.txt', plastisol])
+print('Building combustion table')
+# TODO: separate 3-table for vapor like ssts
+chem_OF, chem_Pc = np.linspace(1.0, 10.0, 10), np.linspace(10*_atm, 50*_atm, 10)
+ox, fu = 'N2O(L),298.15K', 'Plastisol-362'
+for OF in chem_OF:
+    for Pc in chem_Pc:
+        o = OF / (1 + OF) # o/f = OF, o+f=1 => o=OF/(1 + OF)
+        res = comb.solve(Pc, {ox: (o, 298, Pc), fu: (1-o, 298, Pc)})
+        print('OF={OF}, Pc={Pc}atm'.format(OF=OF, Pc=Pc/_atm))
 
 # Initialization
 tnk = make_sat_tank(
@@ -110,20 +118,20 @@ noz = make_cd_nozzle(
 )
 
 # chem = scipy.io.loadmat('../../propellant_configs/HTPB.mat')
-from importlib.resources import files as imp_files
-chem = scipy.io.loadmat(str(imp_files('hrap').joinpath('HTPB.mat')))
+# from importlib.resources import files as imp_files
+# chem = scipy.io.loadmat(str(imp_files('hrap').joinpath('HTPB.mat')))
 
-chem = chem['s'][0][0]
-chem_OF = chem[1].ravel()
-chem_Pc = chem[0].ravel()
-chem_k = chem[2]
-chem_M = chem[3]
-chem_T = chem[4]
-print(chem_OF)
-print(chem_Pc)
-# print(chem_k)
+# chem = chem['s'][0][0]
+# chem_OF = chem[1].ravel()
+# chem_Pc = chem[0].ravel()
+# chem_k = chem[2]
+# chem_M = chem[3]
+# chem_T = chem[4]
+# print(chem_OF)
+# print(chem_Pc)
+# # print(chem_k)
 
-print(chem_k.shape, chem_OF.shape)
+# print(chem_k.shape, chem_OF.shape)
 
 from jax.scipy.interpolate import RegularGridInterpolator
 chem_interp_k = RegularGridInterpolator((chem_OF, chem_Pc), chem_k, fill_value=1.4)
