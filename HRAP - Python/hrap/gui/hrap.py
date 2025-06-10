@@ -349,6 +349,11 @@ def main():
             dpg.add_input_float(label=title, step=props['step'], format=f'%.{decimal}f', tag=props['tag'], callback=callback)
             if 'default' in props:
                 dpg.set_value(props['tag'], props['default'])
+            
+            # Add unit selector
+            if 'units' in props
+                
+            dpg.add_combo(items=[k for k in all_units[].keys()]], default_value='Real Gas', callback=recompile_motor)
     
     def save_callback():
         print('saving', active_file)
