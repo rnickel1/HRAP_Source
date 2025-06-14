@@ -339,12 +339,13 @@ def main():
             dpg.set_item_pos(tag, [x, y])
         
         set_whxy('tank',    vw // 2, vh // 3 - mh, 0,       mh         )
-        set_whxy('grain',   vw // 2, vh // 3,      0,       vh // 3    )
-        set_whxy('chamber', vw // 2, vh // 3,      0,       2 * vh // 3)
-        set_whxy('nozzle',  vw // 2, vh // 3,      vw // 2, 2 * vh // 3)
-        set_whxy('preview', vw // 2, vh // 3,      vw // 2, vh // 3    )
+        set_whxy('grain',   vw // 2, vh // 3 - mh, vw // 2, mh         )
+        set_whxy('chamber', vw // 2, vh // 3,      0,       vh // 3    )
+        set_whxy('nozzle',  vw // 2, vh // 3,      vw // 2, vh // 3    )
+        set_whxy('previewL', vw // 2, vh // 3,     0,       2 * vh // 3)
+        set_whxy('previewR', vw // 2, vh // 3,     vw // 2, 2 * vh // 3)
 
-        set_wh('preview_1', vw // 2 - 18, vh // 3 - 36)
+        for i in range(2): set_wh('preview_{i}'.format(i=i), vw // 2 - 18, vh // 3 - 36)
 
     # First row
     settings = { 'no_move': True, 'no_collapse': True, 'no_resize': True, 'no_close': True }
@@ -358,24 +359,28 @@ def main():
             if 'man_call' in props: callbacks.append(props['man_call'])
             # callback = (None if len(callbacks) == 0 else (callbacks[0] if len(callbacks) == 1 else lambda *_, arr=callbacks: [f() for f in arr]))
             callback = lambda *_, farr=callbacks: [f() for f in farr]
-            dpg.add_input_float(label=title, format=f'%.{decimal}f', tag=props['tag'], callback=callback)
-            # dpg.add_input_float(label=title, step=props['step'], format=f'%.{decimal}f', tag=props['tag'], callback=callback)
-            
-            # Add unit selector, units are applied before running the motor
-            if 'units' in props:
-                unit_type = units.get_unit_type(props['units'])
-                if unit_type != None:
-                    props['gui2sim_units'] = units.unit_conversions[unit_type][props['units']]
-                    props['sim2gui_units'] = units.inv_unit_conversions[unit_type][props['units']]
-                    dpg.add_combo(items=[k for k in units.unit_conversions[unit_type].keys()], default_value=props['units'], callback=callback)
-                else:
-                    print('Error: type of unit "{unit}" could not be found!'.format(unit=props['units']))
-                    del props['units']
+            # with dpg.group(horizontal=True):
+            with dpg.table_row():
+                dpg.add_text(title)
+                dpg.add_input_float(format=f'%.{decimal}f', tag=props['tag'], callback=callback, width=-1)
+                # dpg.add_input_float(label=title, format=f'%.{decimal}f', tag=props['tag'], callback=callback)
+                # dpg.add_input_float(label=title, step=props['step'], format=f'%.{decimal}f', tag=props['tag'], callback=callback)
+                
+                # Add unit selector, units are applied before running the motor
+                if 'units' in props:
+                    unit_type = units.get_unit_type(props['units'])
+                    if unit_type != None:
+                        props['gui2sim_units'] = units.unit_conversions[unit_type][props['units']]
+                        props['sim2gui_units'] = units.inv_unit_conversions[unit_type][props['units']]
+                        dpg.add_combo(items=[k for k in units.unit_conversions[unit_type].keys()], default_value=props['units'], callback=callback, width=48)
+                    else:
+                        print('Error: type of unit "{unit}" could not be found!'.format(unit=props['units']))
+                        del props['units']
             
             if 'default' in props:
                 _v = props['default']
                 if 'units' in props: _v = props['sim2gui_units'](_v)
-                dpg.set_value(props['tag'], _v) # Can't use set_param as s isn't ready yet
+                dpg.set_value(props['tag'], float(_v)) # Can't use set_param as s isn't ready yet
     
     def save_callback():
         print('saving', active_file)
@@ -454,150 +459,164 @@ def main():
                 for theme in themes: dpg.add_menu_item(label=theme, callback=apply_theme_callback, user_data=theme)
         
         
-        
+        col_w = [1.0, 1.0, 0.2]
         # Make tank window
         with dpg.window(tag='tank', label='Tank', **settings):
-            dpg.add_combo(label='Injector Vapor Model', tag='tnk_inj_vap_model', items=['Real Gas', 'Incompressible'], default_value='Real Gas', callback=recompile_motor)
-            dpg.add_combo(label='Injector Liquid Model', tag='tnk_inj_liq_model', items=['Incompressible'], default_value='Incompressible', callback=recompile_motor)
             # diam_units = {}
             diam_steps = {'mm': 1.0, 'cm': 0.1, 'in': 1/16}
             diam_decim = {'mm': 4, 'cm': 3, 'm': 1, 'in': 3, 'ft': 5}
-            make_param('Inner Diameter', {
-                'type': float, 'units': 'mm',
-                'tag': 'tnk_D',
-                'min': 0.0,
-                'default': 4.75 * _in,
-                'step': diam_steps,
-                'decimal': 4,
-                'man_call': man_call_tnk_D,
-            })
-            make_param('Length', {
-                'type': float, 'units': 'm',
-                'tag': 'tnk_L',
-                'min': 0.0,
-                'default': 7 * _ft,
-                # 'step': 1E-2,
-                'decimal': 4,
-                'man_call': man_call_tnk_L,
-            })
-            make_param('Volume', {
-                'type': float, 'units': 'cc',
-                'tag': 'tnk_V', 'direct': True,
-                'min': 0.0,
-                # 'default': (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
-                'step': 1E-4,
-                'decimal': 6,
-                'man_call': man_call_tnk_V,
-            })
+            with dpg.table(header_row=False, resizable=False, borders_innerV=False, policy=dpg.mvTable_SizingStretchProp):
+                for i in range(3): dpg.add_table_column(init_width_or_weight=col_w[i])
+                
+                with dpg.table_row():
+                    dpg.add_text('Injector Vapor Model')
+                    dpg.add_combo(tag='tnk_inj_vap_model', items=['Real Gas', 'Incompressible'], default_value='Real Gas', callback=recompile_motor, width=-1)
+                with dpg.table_row():
+                    dpg.add_text('Injector Liquid Model')
+                    dpg.add_combo(tag='tnk_inj_liq_model', items=['Incompressible'], default_value='Incompressible', callback=recompile_motor, width=-1)
+                
+                make_param('Inner Diameter', {
+                    'type': float, 'units': 'mm',
+                    'tag': 'tnk_D',
+                    'min': 0.0,
+                    'default': 4.75 * _in,
+                    'step': diam_steps,
+                    'decimal': 4,
+                    'man_call': man_call_tnk_D,
+                })
+                make_param('Length', {
+                    'type': float, 'units': 'm',
+                    'tag': 'tnk_L',
+                    'min': 0.0,
+                    'default': 7 * _ft,
+                    # 'step': 1E-2,
+                    'decimal': 4,
+                    'man_call': man_call_tnk_L,
+                })
+                make_param('Volume', {
+                    'type': float, 'units': 'cc',
+                    'tag': 'tnk_V', 'direct': True,
+                    'min': 0.0,
+                    # 'default': (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
+                    'step': 1E-4,
+                    'decimal': 6,
+                    'man_call': man_call_tnk_V,
+                })
 
-            # 'Injector CdA': {
-            #     'type': float,
-            #     'key': 'inj_CdA',
-            #     'min': 1E-9,
-            #     'default': 0.5 * (np.pi/4 * 0.5**2 * _in**2),
-            #     'step': 1E-6,
-            #     'decimal': 6,
-            # },
-            # 
-            make_param('Oxidizer Temperature', {
-                'type': float, 'units': 'K',
-                'tag': 'tnk_T', 'direct': True,
-                'min': 240.0, # Generously high, yet leaves room for applicabiltiy
-                'max': 305.0, # 309 is max applicability of sat nos
-                'default': 293.0,
-                'step': 1.0,
-                'decimal': 0,
-                'man_call': man_call_tnk_T,
-            })
-            make_param('Oxidizer Pressure', {
-                'type': float, 'units': 'kPa',
-                'tag': 'tnk_P',
-                # 'key': 'P',
-                # 'min': 1.0,
-                # 'max': 1E+3,
-                # 'default': 293.0,
-                'step': 10.0E3,
-                'decimal': 0,
-                'man_call': man_call_tnk_P,
-            })
-            make_param('Oxidizer Mass', {
-                'type': float, 'units': 'kg',
-                'tag': 'tnk_m_ox', 'direct': True, # TODO ..., actually change
-                # 'min': 1E-3, 'max': 1E+3,
-                # 'default': 14.0,
-                'step': 1E-1,
-                'decimal': 3,
-                'man_call': man_call_tnk_m_ox,
-            })
-            make_param('Oxidizer Fill [%]', {
-                'type': float,
-                'tag': 'tnk_fill',
-                # 'key': 'm_ox',
-                'min': 0.0, 'max': 100.0,
-                'default': 70.0,
-                'step': 5E-1,
-                'decimal': 1,
-                'man_call': man_call_tnk_fill,
-            })
-            # V = (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
-            # inj_CdA= 0.5 * (np.pi/4 * 0.5**2 * _in**2),
-            # m_ox=14.0
+                # 'Injector CdA': {
+                #     'type': float,
+                #     'key': 'inj_CdA',
+                #     'min': 1E-9,
+                #     'default': 0.5 * (np.pi/4 * 0.5**2 * _in**2),
+                #     'step': 1E-6,
+                #     'decimal': 6,
+                # },
+                # 
+                make_param('Oxidizer Temperature', {
+                    'type': float, 'units': 'K',
+                    'tag': 'tnk_T', 'direct': True,
+                    'min': 240.0, # Generously high, yet leaves room for applicabiltiy
+                    'max': 305.0, # 309 is max applicability of sat nos
+                    'default': 293.0,
+                    'step': 1.0,
+                    'decimal': 0,
+                    'man_call': man_call_tnk_T,
+                })
+                make_param('Oxidizer Pressure', {
+                    'type': float, 'units': 'kPa',
+                    'tag': 'tnk_P',
+                    # 'key': 'P',
+                    # 'min': 1.0,
+                    # 'max': 1E+3,
+                    # 'default': 293.0,
+                    'step': 10.0E3,
+                    'decimal': 0,
+                    'man_call': man_call_tnk_P,
+                })
+                make_param('Oxidizer Mass', {
+                    'type': float, 'units': 'kg',
+                    'tag': 'tnk_m_ox', 'direct': True, # TODO ..., actually change
+                    # 'min': 1E-3, 'max': 1E+3,
+                    # 'default': 14.0,
+                    'step': 1E-1,
+                    'decimal': 3,
+                    'man_call': man_call_tnk_m_ox,
+                })
+                make_param('Oxidizer Fill [%]', {
+                    'type': float,
+                    'tag': 'tnk_fill',
+                    # 'key': 'm_ox',
+                    'min': 0.0, 'max': 100.0,
+                    'default': 70.0,
+                    'step': 5E-1,
+                    'decimal': 1,
+                    'man_call': man_call_tnk_fill,
+                })
+                # V = (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
+                # inj_CdA= 0.5 * (np.pi/4 * 0.5**2 * _in**2),
+                # m_ox=14.0
         
         # Make grain window
         with dpg.window(tag='grain', label='Grain', **settings):
-            dpg.add_text('Geometry')
-            dpg.add_combo(label='Grain Shape', tag='select_shape', items=['Cylindrical', 'Star', 'Custom'], default_value='Cylindrical')
-
-            dpg.add_text('Regression')
-            dpg.add_combo(label='Rate Law', tag='select_regression', items=['Constant O/F', 'Regression Rate'], default_value='Constant O/F')
-
-            dpg.add_text('Chemistry')
-            dpg.add_combo(label='Mode', tag='select_grain_chem_mode', items=['HRAP Presets', 'Other Preset', 'Custom'], default_value='HRAP Presets')
-            dpg.add_combo(label='Preset', tag='select_grain_chem_hrap_presets', items=[
-                'ABS', 'Asphalt', 'HDPE', 'HTPB_Paraffin', 'HTPB', 'Metalized_Plastisol', 'Paraffin', 'Sorbitol',
-            ], default_value='HTPB', callback=recompile_motor)
             # show_item, hide_item
-            
-            make_param('Fixed O/F ratio', {
-                'type': float,
-                'tag': 'grn_OF', 'direct': True,
-                'min': 0.01, 'max': 100.0,
-                'default': 5.0,
-                'step': 1E-1,
-                'decimal': 2,
-            })
-            make_param('Density', {
-                'type': float,
-                'tag': 'grn_rho', 'direct': True,
-                'min': 100.0,
-                'default': 1117.0,
-                'step': 10.0,
-                'decimal': 0,
-            })
-            make_param('Inner diamater', {
-                'type': float,
-                'tag': 'grn_shape_ID', 'direct': True,
-                'min': 0.001,
-                'default': 2.0 * _in,
-                'step': 1E-3,
-                'decimal': 4,
-            })
-            make_param('Outer diamater', {
-                'type': float,
-                'tag': 'grn_OD', 'direct': True,
-                'min': 0.001,
-                'default': 5.0 * _in,
-                'step': 1E-3,
-                'decimal': 4,
-            })
-            make_param('Length', {
-                'type': float,
-                'tag': 'grn_L', 'direct': True,
-                'min': 0.001,
-                'default': 5.0 * _ft,
-                'step': 1E-2,
-                'decimal': 4,
-            })
+            with dpg.table(header_row=False, resizable=False, borders_innerV=False, policy=dpg.mvTable_SizingStretchProp):
+                for i in range(3): dpg.add_table_column(init_width_or_weight=col_w[i])
+                
+                with dpg.table_row():
+                    dpg.add_text('Grain Shape')
+                    dpg.add_combo(tag='select_shape', items=['Cylindrical', 'Star', 'Custom'], default_value='Cylindrical')
+                with dpg.table_row():
+                    dpg.add_text('Rate Law')
+                    dpg.add_combo(label='Rate Law', tag='select_regression', items=['Constant O/F', 'Regression Rate'], default_value='Constant O/F')
+                with dpg.table_row():
+                    dpg.add_text('Chem Mode')
+                    dpg.add_combo(label='Mode', tag='select_grain_chem_mode', items=['HRAP Presets', 'Other Preset', 'Custom'], default_value='HRAP Presets')
+                with dpg.table_row():
+                    dpg.add_text('Chem Preset')
+                    dpg.add_combo(tag='select_grain_chem_hrap_presets', items=[
+                        'ABS', 'Asphalt', 'HDPE', 'HTPB_Paraffin', 'HTPB', 'Metalized_Plastisol', 'Paraffin', 'Sorbitol',
+                    ], default_value='HTPB', callback=recompile_motor)
+                
+                make_param('Fixed O/F ratio', {
+                    'type': float,
+                    'tag': 'grn_OF', 'direct': True,
+                    'min': 0.01, 'max': 100.0,
+                    'default': 5.0,
+                    'step': 1E-1,
+                    'decimal': 2,
+                })
+                make_param('Density', {
+                    'type': float,
+                    'tag': 'grn_rho', 'direct': True,
+                    'min': 100.0,
+                    'default': 1117.0,
+                    'step': 10.0,
+                    'decimal': 0,
+                })
+                make_param('Inner diamater', {
+                    'type': float,
+                    'tag': 'grn_shape_ID', 'direct': True,
+                    'min': 0.001,
+                    'default': 2.0 * _in,
+                    'step': 1E-3,
+                    'decimal': 4,
+                })
+                make_param('Outer diamater', {
+                    'type': float,
+                    'tag': 'grn_OD', 'direct': True,
+                    'min': 0.001,
+                    'default': 5.0 * _in,
+                    'step': 1E-3,
+                    'decimal': 4,
+                })
+                make_param('Length', {
+                    'type': float,
+                    'tag': 'grn_L', 'direct': True,
+                    'min': 0.001,
+                    'default': 5.0 * _ft,
+                    'step': 1E-2,
+                    'decimal': 4,
+                })
         
         # Make chamber window
         with dpg.window(tag='chamber', label='Chamber', **settings):
@@ -613,85 +632,93 @@ def main():
                 # 'step': 1E-3,
                 # 'decimal': 4,
             # },
-            make_param('Volume [m^3]', {
-                'type': float,
-                'tag': 'cmbr_V0', 'key': 'V0',
-                'min': 0.0,
-                'step': 1E-4,
-                'decimal': 6,
-            })
-            make_param('C* Efficiency', {
-                'type': float,
-                'tag': 'cstar_eff', 'key': 'cstar_eff',
-                'min': 0.01, 'max': 1.0,
-                'default': 0.95,
-                'step': 1E-2,
-                'decimal': 2,
-            })
+            with dpg.table(header_row=False, resizable=False, borders_innerV=False, policy=dpg.mvTable_SizingStretchProp):
+                for i in range(3): dpg.add_table_column(init_width_or_weight=col_w[i])
+                
+                make_param('Volume [m^3]', {
+                    'type': float,
+                    'tag': 'cmbr_V0', 'key': 'V0',
+                    'min': 0.0,
+                    'step': 1E-4,
+                    'decimal': 6,
+                })
+                make_param('C* Efficiency', {
+                    'type': float,
+                    'tag': 'cstar_eff', 'key': 'cstar_eff',
+                    'min': 0.01, 'max': 1.0,
+                    'default': 0.95,
+                    'step': 1E-2,
+                    'decimal': 2,
+                })
         
         # Make nozzle window
         with dpg.window(tag='nozzle', label='Nozzle', **settings):
-            make_param('Discharge Coefficient', {
-                'type': float,
-                'tag': 'noz_Cd', 'direct': True,
-                'min': 0.01, 'max': 1.0,
-                'default': 0.9,
-                'step': 1E-2,
-                'decimal': 2,
-            })
-            make_param('Efficiency', {
-                'type': float,
-                'tag': 'noz_eff', 'direct': True,
-                'min': 0.01, 'max': 1.0,
-                'default': 0.9,
-                'step': 1E-2,
-                'decimal': 2,
-            })
-            make_param('Throat Diameter [m]', {
-                'type': float,
-                'tag': 'noz_thrt',
-                'key': 'thrt',
-                'min': 0.001,
-                'default': 1.5 * _in,
-                'step': 1E-3,
-                'decimal': 3,
-                'man_call': man_call_noz_thrt,
-            })
-            make_param('Exit Diameter', {
-                'type': float,
-                'tag': 'noz_exit',
-                # 'key': None,
-                # 'min': 0.001,
-                # 'default': 5.0,
-                'step': 1E-3,
-                'decimal': 5,
-                'man_call': man_call_noz_D_exit,
-            })
-            make_param('Exit/Throat Area Ratio', {
-                'type': float,
-                'tag': 'noz_ER', 'direct': True,
-                'min': 1.001,
-                'default': 5.0,
-                'step': 1E-1,
-                'decimal': 3,
-                'man_call': man_call_noz_ER,
-            })
+            with dpg.table(header_row=False, resizable=False, borders_innerV=False, policy=dpg.mvTable_SizingStretchProp):
+                for i in range(3): dpg.add_table_column(init_width_or_weight=col_w[i])
+                
+                make_param('Discharge Coefficient', {
+                    'type': float,
+                    'tag': 'noz_Cd', 'direct': True,
+                    'min': 0.01, 'max': 1.0,
+                    'default': 0.9,
+                    'step': 1E-2,
+                    'decimal': 2,
+                })
+                make_param('Efficiency', {
+                    'type': float,
+                    'tag': 'noz_eff', 'direct': True,
+                    'min': 0.01, 'max': 1.0,
+                    'default': 0.9,
+                    'step': 1E-2,
+                    'decimal': 2,
+                })
+                make_param('Throat Diameter [m]', {
+                    'type': float,
+                    'tag': 'noz_thrt',
+                    'key': 'thrt',
+                    'min': 0.001,
+                    'default': 1.5 * _in,
+                    'step': 1E-3,
+                    'decimal': 3,
+                    'man_call': man_call_noz_thrt,
+                })
+                make_param('Exit Diameter', {
+                    'type': float,
+                    'tag': 'noz_exit',
+                    # 'key': None,
+                    # 'min': 0.001,
+                    # 'default': 5.0,
+                    'step': 1E-3,
+                    'decimal': 5,
+                    'man_call': man_call_noz_D_exit,
+                })
+                make_param('Exit/Throat Area Ratio', {
+                    'type': float,
+                    'tag': 'noz_ER', 'direct': True,
+                    'min': 1.001,
+                    'default': 5.0,
+                    'step': 1E-1,
+                    'decimal': 3,
+                    'man_call': man_call_noz_ER,
+                })
             # TODO: atm pressure, button to optimize (based on ss, mid liq?)!
         
-        with dpg.window(tag='preview', label='Preview', **settings):
-            # dpg.add_text('Bottom Right Section')
-            # dpg.add_simple_plot(label='Simple Plot', min_scale=-1.0, max_scale=1.0, height=300, tag='plot')
-            # create plot
-            with dpg.plot(tag='preview_1', height=300, width=800):
-                # optionally create legend
-                dpg.add_plot_legend()
+        for i, preview_win_tag in enumerate(['previewL', 'previewR']):
+            with dpg.window(tag=preview_win_tag, label='Preview', **settings):
+                # dpg.add_text('Bottom Right Section')
+                # dpg.add_simple_plot(label='Simple Plot', min_scale=-1.0, max_scale=1.0, height=300, tag='plot')
+                # create plot
+                plt_tag = f'preview_{i}'
+                with dpg.plot(tag=plt_tag, height=300, width=800):
+                    # optionally create legend
+                    dpg.add_plot_legend()
 
-                # REQUIRED: create x and y axes
-                dpg.add_plot_axis(dpg.mvXAxis, label='t (s)')
-                dpg.add_plot_axis(dpg.mvYAxis, label='Thrust (N)', tag='y_axis')
+                    # REQUIRED: create x and y axes
+                    dpg.add_plot_axis(dpg.mvXAxis, label='t (s)')
+                    dpg.add_plot_axis(dpg.mvYAxis, label='Thrust (N)', tag=plt_tag+'_y_axis')
 
-                # series belong to a y axis
-                dpg.add_line_series([], [], label='Thrust', parent='y_axis', tag='series_tag')
+                    # series belong to a y axis
+                    dpg.add_line_series([], [], label='Thrust', parent=plt_tag+'_y_axis', tag=plt_tag+'_series')
     
     # Create initial internal motor
     recompile_motor()
@@ -741,7 +768,7 @@ def main():
             thrust = xstack[:,method['xmap']['noz_thrust']]
             # print(t.shape) # What happened to arr?
             # dpg.set_value('series_tag', [np.asarray(t[::10]), np.asarray(thrust[::10])])
-            dpg.set_value('series_tag', [np.linspace(0.0, T, N_t//10), np.copy(thrust[::10])])
+            dpg.set_value('preview_0_series', [np.linspace(0.0, T, N_t//10), np.copy(thrust[::10])])
             print('max engine fps', 1/(t2-t10))
             # dpg.set_value('series_tag', [np.linspace(0.0, T, N_t), np.asarray(noz['thrust'])])
 
