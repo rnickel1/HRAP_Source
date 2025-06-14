@@ -29,6 +29,21 @@ unit_conversions = {
     'pressure': {'kPa': _kPa, 'atm': _atm, 'psi': _psi},
     # 'temperature': {'deg C': , 'K': 1.0, 'deg F': }
 }
+inv_unit_conversions = {
+    'length':  {},
+    'volume':  {},
+    'pressure':  {},
+}
+for unit_type, units in unit_conversions.items():
+    for unit, val in units.items():
+        # print(unit, isinstance(val, float), type(val), unit in inv_unit_conversions[unit_type])
+        if isinstance(val, float) and not unit in inv_unit_conversions[unit_type]:
+            # print('AAA')
+            inv_unit_conversions[unit_type][unit] = lambda x, f=val: x/f
+for unit_type, units in unit_conversions.items():
+    for unit, val in units.items():
+        if isinstance(val, float):
+            unit_conversions[unit_type][unit] = lambda x, f=val: x*f
 
 def get_unit_type(unit):
     for unit_type, units in unit_conversions.items():

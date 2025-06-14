@@ -14,6 +14,7 @@ import dearpygui.dearpygui as dpg
 from jax.scipy.interpolate import RegularGridInterpolator
 
 import hrap.core as core
+import hrap.units as units
 from hrap.tank    import *
 from hrap.grain   import *
 from hrap.chamber import *
@@ -55,10 +56,16 @@ def clamped_param(val, props):
         return [props['max']]*2
     return val, None
 
+def get_param(tag):
+    props = config[tag]
+    v = dpg.get_value(tag)
+    if 'units' in props: v = props['gui2sim_units'](v)
+    return v
+
 def upd_direct_param(k): # TODO: no clam version
     global upd_due, x
 
-    v = dpg.get_value(k)
+    v = get_param(k)
     if k in s:
         if s[k] != v:
             s[k] = v
@@ -75,34 +82,39 @@ def upd_direct_param(k): # TODO: no clam version
 
 def upd_param(tag):
     props = config[tag]
-    v, clam = clamped_param(dpg.get_value(tag), props)
-    if clam != None: dpg.set_value(tag, clam)
+    v, clam = clamped_param(get_param(tag), props)
+    if clam != None:
+        if 'units' in props: clam = props['sim2gui_units'](clam)
+        dpg.set_value(tag, clam)
     if props['direct']: upd_direct_param(tag)
     return clam
 
 def set_param(tag, val):
-    dpg.set_value(tag, float(val))
+    props = config[tag]
+    _v = float(val)
+    if 'units' in props: _v = props['sim2gui_units'](_v)
+    dpg.set_value(tag, _v)
     return upd_param(tag)
 
 # Callbacks for manual adjustments (gets sets the UI components, not the motor)
 def man_call_tnk_D():
-    D, L, T, fill = [dpg.get_value(tag) for tag in ['tnk_D', 'tnk_L', 'tnk_T', 'tnk_fill']]
+    D, L, T, fill = [get_param(tag) for tag in ['tnk_D', 'tnk_L', 'tnk_T', 'tnk_fill']]
     props = get_sat_props(T)
     V = np.pi/4 * D**2 * L
-    print('TANK', V, D, L)
+    # print('TANK', V, D, L)
     set_param('tnk_V', V)
     set_param('tnk_m_ox', fill/100.0 * props['rho_l'] * V)
 
 man_call_tnk_L = man_call_tnk_D
 
 def man_call_tnk_V():
-    V, D, T, fill = [dpg.get_value(tag) for tag in ['tnk_V', 'tnk_D', 'tnk_T', 'tnk_fill']]
+    V, D, T, fill = [get_param(tag) for tag in ['tnk_V', 'tnk_D', 'tnk_T', 'tnk_fill']]
     props = get_sat_props(T)
     set_param('tnk_L', V / (np.pi/4 * D**2))
     set_param('tnk_m_ox', fill/100.0 * props['rho_l'] * V)
 
 def man_call_tnk_T():
-    T, V, fill = [dpg.get_value(tag) for tag in ['tnk_T', 'tnk_V', 'tnk_fill']]
+    T, V, fill = [get_param(tag) for tag in ['tnk_T', 'tnk_V', 'tnk_fill']]
     props = get_sat_props(T)
     set_param('tnk_P', props['Pv'])
     set_param('tnk_m_ox', fill/100.0 * props['rho_l'] * V)
@@ -111,27 +123,27 @@ def man_call_tnk_P():
     pass
 
 def man_call_tnk_m_ox():
-    T, V, m = [dpg.get_value(tag) for tag in ['tnk_T', 'tnk_V', 'tnk_m_ox']]
+    T, V, m = [get_param(tag) for tag in ['tnk_T', 'tnk_V', 'tnk_m_ox']]
     props = get_sat_props(T)
     fill_clam = set_param('tnk_fill', 100.0 * m / (props['rho_l'] * V))
     if fill_clam != None: set_param('tnk_m_ox', fill_clam/100.0 * props['rho_l'] * V)
 
 def man_call_tnk_fill():
-    T, V, fill = [dpg.get_value(tag) for tag in ['tnk_T', 'tnk_V', 'tnk_fill']]
+    T, V, fill = [get_param(tag) for tag in ['tnk_T', 'tnk_V', 'tnk_fill']]
     props = get_sat_props(T)
     set_param('tnk_m_ox', fill/100.0 * props['rho_l'] * V)
 
 def man_call_noz_thrt():
-    D_throat, ER = [dpg.get_value(tag) for tag in ['noz_thrt', 'noz_ER']]
+    D_throat, ER = [get_param(tag) for tag in ['noz_thrt', 'noz_ER']]
     set_param('noz_exit', np.sqrt(ER * D_throat**2))
 
 def man_call_noz_D_exit():
-    D_throat, D_exit = [dpg.get_value(tag) for tag in ['noz_thrt', 'noz_exit']]
+    D_throat, D_exit = [get_param(tag) for tag in ['noz_thrt', 'noz_exit']]
     ER_clam = set_param('noz_ER', D_exit**2/D_throat**2)
     if ER_clam != None: set_param('noz_exit', np.sqrt(ER_clam * D_throat**2))
 
 def man_call_noz_ER():
-    ER, D_throat = [dpg.get_value(tag) for tag in ['noz_ER', 'noz_thrt']]
+    ER, D_throat = [get_param(tag) for tag in ['noz_ER', 'noz_thrt']]
     set_param('noz_exit', np.sqrt(ER * D_throat**2))
 
 def init_deps(): # Called after init/load to verify consistency
@@ -346,14 +358,24 @@ def main():
             if 'man_call' in props: callbacks.append(props['man_call'])
             # callback = (None if len(callbacks) == 0 else (callbacks[0] if len(callbacks) == 1 else lambda *_, arr=callbacks: [f() for f in arr]))
             callback = lambda *_, farr=callbacks: [f() for f in farr]
-            dpg.add_input_float(label=title, step=props['step'], format=f'%.{decimal}f', tag=props['tag'], callback=callback)
-            if 'default' in props:
-                dpg.set_value(props['tag'], props['default'])
+            dpg.add_input_float(label=title, format=f'%.{decimal}f', tag=props['tag'], callback=callback)
+            # dpg.add_input_float(label=title, step=props['step'], format=f'%.{decimal}f', tag=props['tag'], callback=callback)
             
-            # Add unit selector
-            if 'units' in props
-                
-            dpg.add_combo(items=[k for k in all_units[].keys()]], default_value='Real Gas', callback=recompile_motor)
+            # Add unit selector, units are applied before running the motor
+            if 'units' in props:
+                unit_type = units.get_unit_type(props['units'])
+                if unit_type != None:
+                    props['gui2sim_units'] = units.unit_conversions[unit_type][props['units']]
+                    props['sim2gui_units'] = units.inv_unit_conversions[unit_type][props['units']]
+                    dpg.add_combo(items=[k for k in units.unit_conversions[unit_type].keys()], default_value=props['units'], callback=callback)
+                else:
+                    print('Error: type of unit "{unit}" could not be found!'.format(unit=props['units']))
+                    del props['units']
+            
+            if 'default' in props:
+                _v = props['default']
+                if 'units' in props: _v = props['sim2gui_units'](_v)
+                dpg.set_value(props['tag'], _v) # Can't use set_param as s isn't ready yet
     
     def save_callback():
         print('saving', active_file)
@@ -437,26 +459,29 @@ def main():
         with dpg.window(tag='tank', label='Tank', **settings):
             dpg.add_combo(label='Injector Vapor Model', tag='tnk_inj_vap_model', items=['Real Gas', 'Incompressible'], default_value='Real Gas', callback=recompile_motor)
             dpg.add_combo(label='Injector Liquid Model', tag='tnk_inj_liq_model', items=['Incompressible'], default_value='Incompressible', callback=recompile_motor)
+            # diam_units = {}
+            diam_steps = {'mm': 1.0, 'cm': 0.1, 'in': 1/16}
+            diam_decim = {'mm': 4, 'cm': 3, 'm': 1, 'in': 3, 'ft': 5}
             make_param('Inner Diameter', {
-                'type': float,
+                'type': float, 'units': 'mm',
                 'tag': 'tnk_D',
                 'min': 0.0,
                 'default': 4.75 * _in,
-                'step': 1E-3,
+                'step': diam_steps,
                 'decimal': 4,
                 'man_call': man_call_tnk_D,
             })
             make_param('Length', {
-                'type': float,
+                'type': float, 'units': 'm',
                 'tag': 'tnk_L',
                 'min': 0.0,
                 'default': 7 * _ft,
-                'step': 1E-2,
+                # 'step': 1E-2,
                 'decimal': 4,
                 'man_call': man_call_tnk_L,
             })
             make_param('Volume', {
-                'type': float,
+                'type': float, 'units': 'cc',
                 'tag': 'tnk_V', 'direct': True,
                 'min': 0.0,
                 # 'default': (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
@@ -475,7 +500,7 @@ def main():
             # },
             # 
             make_param('Oxidizer Temperature', {
-                'type': float,
+                'type': float, 'units': 'K',
                 'tag': 'tnk_T', 'direct': True,
                 'min': 240.0, # Generously high, yet leaves room for applicabiltiy
                 'max': 305.0, # 309 is max applicability of sat nos
@@ -485,7 +510,7 @@ def main():
                 'man_call': man_call_tnk_T,
             })
             make_param('Oxidizer Pressure', {
-                'type': float,
+                'type': float, 'units': 'kPa',
                 'tag': 'tnk_P',
                 # 'key': 'P',
                 # 'min': 1.0,
@@ -496,7 +521,7 @@ def main():
                 'man_call': man_call_tnk_P,
             })
             make_param('Oxidizer Mass', {
-                'type': float,
+                'type': float, 'units': 'kg',
                 'tag': 'tnk_m_ox', 'direct': True, # TODO ..., actually change
                 # 'min': 1E-3, 'max': 1E+3,
                 # 'default': 14.0,
