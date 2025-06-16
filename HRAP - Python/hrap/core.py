@@ -203,16 +203,16 @@ def make_integrator(fstep, method):
         return x
 
     def step_t(i, args):
-        t, dt, s, x, xmap, xstack = args
-
+        dt, s, x, xmap, xstack = args
+        
         x = fstep(s, x, xmap, method['diff_xmap'], method['diff_dmap'], dt, fderiv)
 
+        xstack = xstack.at[i, :].set(x)
+        
         for fupdate in method['fupdates']:
             x = fupdate(s, x, xmap)
 
-        xstack = xstack.at[i, :].set(x)
-
-        return t, dt, s, x, xmap, xstack
+        return dt, s, x, xmap, xstack
 
     # Note that under compilation, xmap etc. become fixed
     def run_solver(s, x, dt=1E-2, T=10.0, method=method):
@@ -227,18 +227,21 @@ def make_integrator(fstep, method):
         # for i_dx in method.diff_dmap:
         #     method
 
-        Nt = int(np.ceil(T / dt))
-        xstack = jnp.zeros((Nt, x.size))
+        # Determine number of time step, one less than number of records
+        Nt = int(np.floor(T / dt))
+        xstack = jnp.zeros((Nt+1, x.size))
         # print('AGFFSAGAGS', x[method['xmap']['tnk_m_ox']])
 
         for fpreprs in method['fpreprs']:
             x = fpreprs(s, x, method['xmap'])
         
-        xstack = xstack.at[0, :].set(x)
+        # xstack = xstack.at[0, :].set(x)
 
         # Run solver while loop and record elapsed wall time
         # wall_t1 = time.time()
-        t, _, _, x, _, xstack = jax.lax.fori_loop(1, Nt+1, step_t, (t, dt, s, x, method['xmap'], xstack)) # TODO: jit outside!
+        t = jnp.arange(Nt+1)*dt
+        _, _, x, _, xstack = jax.lax.fori_loop(0, Nt, step_t, (dt, s, x, method['xmap'], xstack)) # TODO: jit outside!
+        xstack = xstack.at[-1, :].set(x)
         # for i in range(1, Nt+1):
         #     t, _, _, x, _, xstack = step_t(i, (t, dt, s, x, method['xmap'], xstack))
         # wall_t2 = time.time()
@@ -258,7 +261,7 @@ def get_impulse_class(value_Ns: float) -> str:
     
     return Iclass
 
-def bin_resample_series(t, t_bins, *v):
+def bin_resample_series(t, bins, *v):
     Ibin = np.searchsorted(bins, t) # Bin index of each bin
     Nbin = np.bincount(Ibin) # Number of samples in each bin
     it = np.argwhere(Nbin > 0.0)
@@ -299,12 +302,12 @@ def export_rse(
         t, F, prop_mdot, m, Cg = bin_resample_series(t, bins, F, prop_mdot, m, Cg)
         
     # Add proceeding zero point and shift then add succeeding zero point (if each not present)
-    # This prevents 
-    if F[0] != 0.0:
-        t += 1E-4
-        t, F, prop_mdot, m, Cg = [np.insert(arr, 0, val) for arr, val in [[F, 0.0], [prop_mdot, 0.0], [m, m[0]], [Cg, Cg[0]]]]
+    # This is mainly to be similar to eng output, is more safe for using interpolators
+    # if F[0] != 0.0:
+        # t += 1E-4
+        # t, F, prop_mdot, m, Cg = [np.insert(arr, 0, val) for arr, val in [[t,0.0], [F, 0.0], [prop_mdot, 0.0], [m, m[0]], [Cg, Cg[0]]]]
     if F[-1] != 0.0:
-        t, F, prop_mdot, m, Cg = [np.append(arr,    val) for arr, val in [[F, 0.0], [prop_mdot, 0.0], [m, m[-1]], [Cg, Cg[-1]]]]
+        t, F, prop_mdot, m, Cg = [np.append(arr,    val) for arr, val in [[t,T_burn+1E-5], [F, 0.0], [prop_mdot, 0.0], [m, m[-1]], [Cg, Cg[-1]]]]
     
     # Renormalize thrust to exactly match impulse (may have been altered slightly by resampling without weighting)
     F *= Itot / np.trapezoid(F, t)

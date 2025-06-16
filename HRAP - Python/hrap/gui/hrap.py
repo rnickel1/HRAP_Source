@@ -31,7 +31,7 @@ get_sat_props = get_sat_nos_props
 hrap_version = version('hrap')
 
 # Virtualized Python environments may redirect these to other locations
-# Note that Windows Store Python redirects this to %APPDATA%\Local\Packages\PythonSoftwareFoundation.Python.[some garbage]\LocalCache\Roaming
+# Note that Windows Store Python redirects %APPDATA%\Roaming to %APPDATA%\Local\Packages\PythonSoftwareFoundation.Python.[some garbage]\LocalCache\Roaming
 def get_datadir() -> Path:
     home = Path.home()
     if sys.platform == 'win32':
@@ -47,6 +47,7 @@ active_file  = None
 config       = { }
 upd_due      = True
 s, x, method = [None]*3
+t, xstack = [None]*2 # TODO: Make m, Cg part of x?
 fire_engine  = None
 
 def clamped_param(val, props):
@@ -234,8 +235,28 @@ def recompile_motor():
         if props['direct']: upd_direct_param(tag)
     init_deps()
 
+def calculate_m_Cg():
+    dry_m, dry_cg, tnk_ID, ox_pos, grn_pos = [get_param(k) for k in ['dry_m', 'dry_cg', 'tnk_D', 'ox_pos', 'grn_pos']]
+    T_ox, m_ox_vap, m_ox_liq, rho_ox_vap, rho_ox_liq, cmbr_m_g, grn_A = [xstack[:,method['xmap'][k]] for k in ['tnk_T', 'tnk_m_ox_vap', 'tnk_m_ox_liq', 'tnk_rho_ox_vap', 'tnk_rho_ox_liq', 'cmbr_m_g', 'grn_A']]
+    grn_L, grn_rho = [s[k] for k in ['grn_L', 'grn_rho']]
+    grn_m = grn_A*grn_L*grn_rho
+    
+    m = dry_m + m_ox_vap + m_ox_liq + grn_m + cmbr_m_g
+    
+    cg = jnp.full_like(m, dry_cg*dry_m)
+    A_tnk = np.pi/4*tnk_ID**2
+    L_ox_vap = (m_ox_vap/rho_ox_vap) / A_tnk
+    L_ox_liq = (m_ox_liq/rho_ox_liq) / A_tnk
+    cg += m_ox_vap * (ox_pos + L_ox_vap/2)
+    cg += m_ox_liq * (ox_pos + L_ox_vap + L_ox_liq/2)
+    # Approximate chamber mass Cg as center of grain
+    cg += (grn_m + cmbr_m_g) * (grn_pos + grn_L/2)
+    cg /= m
+    
+    return m, cg
+
 def main():
-    global hrap_root, config, upd_due #, s, x, method
+    global hrap_root, config, upd_due, t, xstack #, s, x, method
 
     print('beginning w/ hrap version', hrap_version)
     jax.config.update('jax_enable_x64', True)
@@ -340,7 +361,8 @@ def main():
         
         set_whxy('tank',    vw // 2, vh // 3 - mh, 0,       mh         )
         set_whxy('grain',   vw // 2, vh // 3 - mh, vw // 2, mh         )
-        set_whxy('chamber', vw // 2, vh // 3,      0,       vh // 3    )
+        set_whxy('chamber', vw // 2, vh // 6,      0,       vh // 3    )
+        set_whxy('misc',    vw // 2, vh // 6,      0,       vh // 2)
         set_whxy('nozzle',  vw // 2, vh // 3,      vw // 2, vh // 3    )
         set_whxy('previewL', vw // 2, vh // 3,     0,       2 * vh // 3)
         set_whxy('previewR', vw // 2, vh // 3,     vw // 2, 2 * vh // 3)
@@ -407,20 +429,38 @@ def main():
         # print('save as', app_data)
     
     def export_rse_callback(sender, app_data):
-        core.save_rse(
+        thrust, prop_mdot = [xstack[:,method['xmap'][k]] for k in ['noz_thrust', 'noz_mdot']]
+        OD, L = [get_param(k) for k in ['dry_OD', 'dry_L']]
+        m, cg = calculate_m_Cg()
+        core.export_rse(
             app_data['file_path_name'],
-            t, noz['thrust'], noz['mdot'], t*0, t*0,
+            t,  thrust, prop_mdot, m, cg,
             OD=OD, L=L, D_throat=s['noz_thrt'], D_exit=np.sqrt(s['noz_ER'])*s['noz_thrt'],
             motor_type='hybrid', mfg=dpg.get_value('mfg'),
         )
     
     def export_eng_callback(sender, app_data):
-        core.save_eng(
+        thrust = xstack[:,method['xmap']['noz_thrust']]
+        OD, L = [get_param(k) for k in ['dry_OD', 'dry_L']]
+        m, _ = calculate_m_Cg()
+        core.export_eng(
             app_data['file_path_name'],
-            t, noz['thrust'], t*0,
+            t, thrust, m,
             OD=OD, L=L,
             mfg=dpg.get_value('mfg'),
         )
+    
+    def export_csv_callback(sender, app_data):
+        m, cg = calculate_m_Cg()
+        csv_data = np.zeros((t.size, 3+len(method['xmap'])))
+        header = 't, m, cg'
+        csv_data[:, 0] = t
+        csv_data[:, 1] = m
+        csv_data[:, 2] = cg
+        for i, k in enumerate(method['xmap']):
+            csv_data[:, 3+i] = xstack[:,method['xmap'][k]]
+            header += ',' + k
+        np.savetxt(app_data['file_path_name'], csv_data, delimiter=',', header=header, comments='')
 
     def key_press_handler(sender, app_data):
         global active_file
@@ -439,10 +479,12 @@ def main():
             #     dpg.add_selectable(label='bookmark 1')
             #     dpg.add_selectable(label='bookmark 2')
             #     dpg.add_selectable(label='bookmark 3')
-        with dpg.file_dialog(tag='save_rse', default_filename='', directory_selector=False, show=False, width=700 ,height=400, callback=export_rse_callback):
+        with dpg.file_dialog(tag='export_rse', default_filename='', directory_selector=False, show=False, width=700 ,height=400, callback=export_rse_callback):
             dpg.add_file_extension('.rse')
-        with dpg.file_dialog(tag='save_eng', default_filename='', directory_selector=False, show=False, width=700 ,height=400, callback=export_eng_callback):
+        with dpg.file_dialog(tag='export_eng', default_filename='', directory_selector=False, show=False, width=700 ,height=400, callback=export_eng_callback):
             dpg.add_file_extension('.eng')
+        with dpg.file_dialog(tag='export_csv', default_filename='', directory_selector=False, show=False, width=700 ,height=400, callback=export_csv_callback):
+            dpg.add_file_extension('.csv')
         
         with dpg.menu_bar():
             with dpg.menu(label='File'):
@@ -450,8 +492,9 @@ def main():
                 dpg.add_menu_item(label='Load',       callback=lambda: dpg.show_item('load'))
                 dpg.add_menu_item(label='Save',       callback=lambda: save_callback())
                 dpg.add_menu_item(label='Save As',    callback=lambda: dpg.show_item('save_as'))
-                dpg.add_menu_item(label='Export RSE', callback=lambda: dpg.show_item('save_rse'))
-                dpg.add_menu_item(label='Export ENG', callback=lambda: dpg.show_item('save_eng'))
+                dpg.add_menu_item(label='Export RSE', callback=lambda: dpg.show_item('export_rse'))
+                dpg.add_menu_item(label='Export ENG', callback=lambda: dpg.show_item('export_eng'))
+                dpg.add_menu_item(label='Export CSV', callback=lambda: dpg.show_item('export_csv'))
             with dpg.menu(label='Config'):
                 dpg.add_input_text(label='Manufacturer', tag='mfg', default_value='HRAP')
             with dpg.menu(label='Theme'):
@@ -465,7 +508,7 @@ def main():
             # diam_units = {}
             diam_steps = {'mm': 1.0, 'cm': 0.1, 'in': 1/16}
             diam_decim = {'mm': 4, 'cm': 3, 'm': 1, 'in': 3, 'ft': 5}
-            with dpg.table(header_row=False, resizable=False, borders_innerV=False, policy=dpg.mvTable_SizingStretchProp):
+            with dpg.table(header_row=False, resizable=False, borders_innerV=False, borders_innerH=True, policy=dpg.mvTable_SizingStretchProp):
                 for i in range(3): dpg.add_table_column(init_width_or_weight=col_w[i])
                 
                 with dpg.table_row():
@@ -620,22 +663,10 @@ def main():
         
         # Make chamber window
         with dpg.window(tag='chamber', label='Chamber', **settings):
-            # 'Diameter': {
-                # 'type': float,
-                # 'min': 0.0,
-                # 'step': 1E-3,
-                # 'decimal': 4,
-            # },
-            # 'Length': {
-                # 'type': float,
-                # 'min': 0.0,
-                # 'step': 1E-3,
-                # 'decimal': 4,
-            # },
             with dpg.table(header_row=False, resizable=False, borders_innerV=False, policy=dpg.mvTable_SizingStretchProp):
                 for i in range(3): dpg.add_table_column(init_width_or_weight=col_w[i])
                 
-                make_param('Volume [m^3]', {
+                make_param('Volume', {
                     'type': float,
                     'tag': 'cmbr_V0', 'key': 'V0',
                     'min': 0.0,
@@ -649,6 +680,59 @@ def main():
                     'default': 0.95,
                     'step': 1E-2,
                     'decimal': 2,
+                })
+        
+        # Make misc window
+        with dpg.window(tag='misc', label='Export Config', **settings):
+            with dpg.table(header_row=False, resizable=False, borders_innerV=False, policy=dpg.mvTable_SizingStretchProp):
+                for i in range(3): dpg.add_table_column(init_width_or_weight=col_w[i])
+                
+                make_param('Motor Outer Diameter', {
+                    'type': float, 'units': 'mm',
+                    'tag': 'dry_OD',
+                    'min': 0.0,
+                    'default': 0.0,
+                    'step': 1E-1,
+                    'decimal': 6,
+                })
+                make_param('Motor Length', {
+                    'type': float, 'units': 'mm',
+                    'tag': 'dry_L',
+                    'min': 0.0,
+                    'default': 0.0,
+                    'step': 1E-1,
+                    'decimal': 6,
+                })
+                make_param('Dry Mass', {
+                    'type': float, 'units': 'kg',
+                    'tag': 'dry_m',
+                    'min': 0.0,
+                    'step': 1E-1,
+                    'decimal': 6,
+                })
+                make_param('Dry Center of Gravity (from top)', {
+                    'type': float, 'units': 'mm',
+                    'tag': 'dry_cg',
+                    'min': 0.0,
+                    'default': 0.0,
+                    'step': 1E-2,
+                    'decimal': 6,
+                })
+                make_param('Oxidizer Position (from top)', {
+                    'type': float, 'units': 'mm',
+                    'tag': 'ox_pos',
+                    'min': 0.0,
+                    'default': 0.0,
+                    'step': 1E-2,
+                    'decimal': 6,
+                })
+                make_param('Grain Position (from top)', {
+                    'type': float, 'units': 'mm',
+                    'tag': 'grn_pos',
+                    'min': 0.0,
+                    'default': 0.0,
+                    'step': 1E-2,
+                    'decimal': 6,
                 })
         
         # Make nozzle window
@@ -703,22 +787,26 @@ def main():
                 })
             # TODO: atm pressure, button to optimize (based on ss, mid liq?)!
         
-        for i, preview_win_tag in enumerate(['previewL', 'previewR']):
-            with dpg.window(tag=preview_win_tag, label='Preview', **settings):
-                # dpg.add_text('Bottom Right Section')
-                # dpg.add_simple_plot(label='Simple Plot', min_scale=-1.0, max_scale=1.0, height=300, tag='plot')
-                # create plot
-                plt_tag = f'preview_{i}'
-                with dpg.plot(tag=plt_tag, height=300, width=800):
-                    # optionally create legend
-                    dpg.add_plot_legend()
-
-                    # REQUIRED: create x and y axes
-                    dpg.add_plot_axis(dpg.mvXAxis, label='t (s)')
-                    dpg.add_plot_axis(dpg.mvYAxis, label='Thrust (N)', tag=plt_tag+'_y_axis')
-
-                    # series belong to a y axis
-                    dpg.add_line_series([], [], label='Thrust', parent=plt_tag+'_y_axis', tag=plt_tag+'_series')
+        i, preview_win_tag = 0, 'previewL'
+        # in enumerate(['previewL', 'previewR']):
+        with dpg.window(tag=preview_win_tag, label='Preview', **settings):
+            # dpg.add_text('Bottom Right Section')
+            # dpg.add_simple_plot(label='Simple Plot', min_scale=-1.0, max_scale=1.0, height=300, tag='plot')
+            # create plot
+            plt_tag = f'preview_{i}'
+            with dpg.plot(tag=plt_tag, height=300, width=800):
+                dpg.add_plot_legend()
+                dpg.add_plot_axis(dpg.mvXAxis, label='t (s)')
+                dpg.add_plot_axis(dpg.mvYAxis, label='Thrust (N)', tag=plt_tag+'_y_axis')
+                dpg.add_line_series([], [], label='Total', parent=plt_tag+'_y_axis', tag=plt_tag+'_series')
+        i, preview_win_tag = 1, 'previewR'
+        with dpg.window(tag=preview_win_tag, label='Preview', **settings):
+            plt_tag = f'preview_{i}'
+            with dpg.plot(tag=plt_tag, height=300, width=800):
+                dpg.add_plot_legend()
+                dpg.add_plot_axis(dpg.mvXAxis, label='t (s)')
+                dpg.add_plot_axis(dpg.mvYAxis, label='Pressure (Pa)', tag=plt_tag+'_y_axis')
+                dpg.add_line_series([], [], label='Tank', parent=plt_tag+'_y_axis', tag=plt_tag+'_series')
     
     # Create initial internal motor
     recompile_motor()
@@ -755,7 +843,7 @@ def main():
             t10 = time.time()
             # print('run 1')
             # t, x1, xstack = fire_engine(s, x, dt=1E-3, T=T)
-            _, _, xstack = fire_engine(s, x, dt=1E-3, T=T)
+            t, _, xstack = fire_engine(s, x, dt=1E-3, T=T)
             # print('run 2')
             jax.block_until_ready(xstack)
             xstack = np.copy(xstack)
@@ -766,12 +854,13 @@ def main():
             t2 = time.time()
 
             thrust = xstack[:,method['xmap']['noz_thrust']]
-            # print(t.shape) # What happened to arr?
-            # dpg.set_value('series_tag', [np.asarray(t[::10]), np.asarray(thrust[::10])])
-            dpg.set_value('preview_0_series', [np.linspace(0.0, T, N_t//10), np.copy(thrust[::10])])
+            tnk_P = xstack[:,method['xmap']['tnk_P']]
+            # Copy is necessary as requires C-contiguous
+            _t = np.copy(t[::10])
+            dpg.set_value('preview_0_series', [_t, np.copy(thrust[::10])])
+            dpg.set_value('preview_1_series', [_t, np.copy(tnk_P[::10])])
             print('max engine fps', 1/(t2-t10))
-            # dpg.set_value('series_tag', [np.linspace(0.0, T, N_t), np.asarray(noz['thrust'])])
-
+        
         # print('render')
         dpg.render_dearpygui_frame()
         # print('finish')
