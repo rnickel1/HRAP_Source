@@ -418,10 +418,19 @@ def main():
                 # Add unit selector, units are applied before running the motor
                 if 'units' in props:
                     unit_type = units.get_unit_type(props['units'])
+                    props['unit_type'] = unit_type
                     if unit_type != None:
                         props['gui2sim_units'] = units.unit_conversions[unit_type][props['units']]
                         props['sim2gui_units'] = units.inv_unit_conversions[unit_type][props['units']]
-                        dpg.add_combo(items=[k for k in units.unit_conversions[unit_type].keys()], default_value=props['units'], callback=callback, width=48)
+                        def _units_callback(sender, app_data, *_, tag=props['tag']):
+                            # print(app_data, tag)
+                            props = config[tag]
+                            _v = get_param(tag)
+                            props['units'] = app_data
+                            props['gui2sim_units'] = units.unit_conversions[props['unit_type']][props['units']]
+                            props['sim2gui_units'] = units.inv_unit_conversions[props['unit_type']][props['units']]
+                            set_param(tag, _v)
+                        dpg.add_combo(items=[k for k in units.unit_conversions[unit_type].keys()], default_value=props['units'], callback=_units_callback, width=48)
                     else:
                         print('Error: type of unit "{unit}" could not be found!'.format(unit=props['units']))
                         del props['units']
