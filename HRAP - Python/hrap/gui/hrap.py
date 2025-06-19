@@ -114,14 +114,40 @@ def man_call_tnk_V():
     set_param('tnk_L', V / (np.pi/4 * D**2))
     set_param('tnk_m_ox', fill/100.0 * props['rho_l'] * V)
 
+def man_call_tnk_inj_D():
+    inj_D, inj_Cd = [get_param(tag) for tag in ['tnk_inj_D', 'tnk_inj_Cd']]
+    set_param('tnk_inj_CdA', inj_Cd*(np.pi/4 * inj_D**2))
+
+man_call_tnk_inj_Cd = man_call_tnk_inj_D
+
+def man_call_tnk_inj_CdA():
+    inj_CdA, inj_Cd = [get_param(tag) for tag in ['tnk_inj_CdA', 'tnk_inj_Cd']]
+    inj_D_clam = set_param('tnk_inj_D', np.sqrt(4/np.pi*inj_CdA/inj_Cd))
+    if inj_D_clam != None: set_param('tnk_inj_CdA', inj_Cd*(np.pi/4 * inj_D_clam**2))
+
 def man_call_tnk_T():
     T, V, fill = [get_param(tag) for tag in ['tnk_T', 'tnk_V', 'tnk_fill']]
     props = get_sat_props(T)
     set_param('tnk_P', props['Pv'])
     set_param('tnk_m_ox', fill/100.0 * props['rho_l'] * V)
 
+get_Pv_loss = jax.jit(lambda T, Pv_targ, get_sat_props=get_sat_props: get_sat_props(T)['Pv'] - Pv_targ)
 def man_call_tnk_P():
-    pass
+    T_props = config['tnk_T']
+    T_min, T_max = T_props['min'], T_props['max']
+    P_min, P_max = [get_sat_props(T)['Pv'] for T in [T_min, T_max]]
+    T, P = [get_param(tag) for tag in ['tnk_T', 'tnk_P']]
+    # Manually deal with min,max since opt will fail otherwise
+    if P <= P_min:
+        set_param('tnk_T', T_min)
+        set_param('tnk_P', P_min)
+        return
+    if P >= P_max:
+        set_param('tnk_T', T_max)
+        set_param('tnk_P', P_max)
+        return
+    T = scipy.optimize.brentq(get_Pv_loss, T_min, T_max, args=(P,))
+    set_param('tnk_T', T)
 
 def man_call_tnk_m_ox():
     T, V, m = [get_param(tag) for tag in ['tnk_T', 'tnk_V', 'tnk_m_ox']]
@@ -149,6 +175,7 @@ def man_call_noz_ER():
 
 def init_deps(): # Called after init/load to verify consistency
     man_call_tnk_D()
+    man_call_tnk_inj_D()
     man_call_tnk_T()
     # man_call_ox_m()
     man_call_noz_ER()
@@ -403,6 +430,14 @@ def main():
                 _v = props['default']
                 if 'units' in props: _v = props['sim2gui_units'](_v)
                 dpg.set_value(props['tag'], float(_v)) # Can't use set_param as s isn't ready yet
+        if props['type'] == int:
+            callbacks = [lambda *_, key=props['tag']: upd_param(key)] # Same callback setup as above
+            if 'man_call' in props: callbacks.append(props['man_call'])
+            callback = lambda *_, farr=callbacks: [f() for f in farr]
+            with dpg.table_row():
+                dpg.add_text(title)
+                dpg.add_input_int(tag=props['tag'], callback=callback, width=-1)
+            if 'default' in props: dpg.set_value(props['tag'], int(props['default']))
     
     def save_callback():
         print('saving', active_file)
@@ -503,20 +538,14 @@ def main():
         
         
         col_w = [1.0, 1.0, 0.2]
+        input_table_kwargs = core.make_dict(header_row=False, resizable=False, borders_innerV=False, borders_innerH=True, policy=dpg.mvTable_SizingStretchProp)
         # Make tank window
         with dpg.window(tag='tank', label='Tank', **settings):
             # diam_units = {}
             diam_steps = {'mm': 1.0, 'cm': 0.1, 'in': 1/16}
             diam_decim = {'mm': 4, 'cm': 3, 'm': 1, 'in': 3, 'ft': 5}
-            with dpg.table(header_row=False, resizable=False, borders_innerV=False, borders_innerH=True, policy=dpg.mvTable_SizingStretchProp):
+            with dpg.table(**input_table_kwargs):
                 for i in range(3): dpg.add_table_column(init_width_or_weight=col_w[i])
-                
-                with dpg.table_row():
-                    dpg.add_text('Injector Vapor Model')
-                    dpg.add_combo(tag='tnk_inj_vap_model', items=['Real Gas', 'Incompressible'], default_value='Real Gas', callback=recompile_motor, width=-1)
-                with dpg.table_row():
-                    dpg.add_text('Injector Liquid Model')
-                    dpg.add_combo(tag='tnk_inj_liq_model', items=['Incompressible'], default_value='Incompressible', callback=recompile_motor, width=-1)
                 
                 make_param('Inner Diameter', {
                     'type': float, 'units': 'mm',
@@ -546,23 +575,55 @@ def main():
                     'man_call': man_call_tnk_V,
                 })
 
-                # 'Injector CdA': {
-                #     'type': float,
-                #     'key': 'inj_CdA',
-                #     'min': 1E-9,
-                #     'default': 0.5 * (np.pi/4 * 0.5**2 * _in**2),
-                #     'step': 1E-6,
-                #     'decimal': 6,
-                # },
-                # 
+                with dpg.table_row():
+                    dpg.add_text('Injector Vapor Model')
+                    dpg.add_combo(tag='tnk_inj_vap_model', items=['Real Gas', 'Incompressible'], default_value='Real Gas', callback=recompile_motor, width=-1)
+                with dpg.table_row():
+                    dpg.add_text('Injector Liquid Model')
+                    dpg.add_combo(tag='tnk_inj_liq_model', items=['Incompressible'], default_value='Incompressible', callback=recompile_motor, width=-1)
+                make_param('Injector Diameter', {
+                    'type': float, 'units': 'mm',
+                    'tag': 'tnk_inj_D',
+                    'min': 1E-3,
+                    'default': 0.5 * _in,
+                    'step': 1E-3,
+                    'decimal': 6,
+                    'man_call': man_call_tnk_inj_D,
+                })
+                make_param('Injector Discharge Coefficient', {
+                    'type': float,
+                    'tag': 'tnk_inj_Cd',
+                    'min': 1E-2,
+                    'default': 0.22,
+                    'step': 1E-2,
+                    'decimal': 3,
+                    'man_call': man_call_tnk_inj_Cd,
+                })
+                make_param('Injector CdA', {
+                    'type': float, 'units': 'mm2',
+                    'tag': 'tnk_inj_CdA', 'direct': True,
+                    'min': 0.0, # Keep positive, diam limits
+                    # 'default': 0.5 * (np.pi/4 * 0.5**2 * _in**2),
+                    'step': 1E-6,
+                    'decimal': 6,
+                    'man_call': man_call_tnk_inj_CdA,
+                })
+                make_param('Injector Count', {
+                    'type': int,
+                    'tag': 'tnk_inj_N', 'direct': True,
+                    'min': 1,
+                    'default': 1,
+                    'step': 1,
+                })
+                
                 make_param('Oxidizer Temperature', {
                     'type': float, 'units': 'K',
                     'tag': 'tnk_T', 'direct': True,
                     'min': 240.0, # Generously high, yet leaves room for applicabiltiy
                     'max': 305.0, # 309 is max applicability of sat nos
-                    'default': 293.0,
+                    'default': 294.0,
                     'step': 1.0,
-                    'decimal': 0,
+                    'decimal': 1,
                     'man_call': man_call_tnk_T,
                 })
                 make_param('Oxidizer Pressure', {
@@ -572,7 +633,7 @@ def main():
                     # 'min': 1.0,
                     # 'max': 1E+3,
                     # 'default': 293.0,
-                    'step': 10.0E3,
+                    'step': 10.0,
                     'decimal': 0,
                     'man_call': man_call_tnk_P,
                 })
@@ -590,7 +651,7 @@ def main():
                     'tag': 'tnk_fill',
                     # 'key': 'm_ox',
                     'min': 0.0, 'max': 100.0,
-                    'default': 70.0,
+                    'default': 66.2,
                     'step': 5E-1,
                     'decimal': 1,
                     'man_call': man_call_tnk_fill,
@@ -602,29 +663,29 @@ def main():
         # Make grain window
         with dpg.window(tag='grain', label='Grain', **settings):
             # show_item, hide_item
-            with dpg.table(header_row=False, resizable=False, borders_innerV=False, policy=dpg.mvTable_SizingStretchProp):
+            with dpg.table(**input_table_kwargs):
                 for i in range(3): dpg.add_table_column(init_width_or_weight=col_w[i])
                 
                 with dpg.table_row():
                     dpg.add_text('Grain Shape')
-                    dpg.add_combo(tag='select_shape', items=['Cylindrical', 'Star', 'Custom'], default_value='Cylindrical')
+                    dpg.add_combo(tag='select_shape', items=['Cylindrical', 'Star', 'Custom'], default_value='Cylindrical', width=-1)
                 with dpg.table_row():
                     dpg.add_text('Rate Law')
-                    dpg.add_combo(label='Rate Law', tag='select_regression', items=['Constant O/F', 'Regression Rate'], default_value='Constant O/F')
+                    dpg.add_combo(tag='select_regression', items=['Constant O/F', 'Regression Rate'], default_value='Constant O/F', width=-1)
                 with dpg.table_row():
                     dpg.add_text('Chem Mode')
-                    dpg.add_combo(label='Mode', tag='select_grain_chem_mode', items=['HRAP Presets', 'Other Preset', 'Custom'], default_value='HRAP Presets')
+                    dpg.add_combo(tag='select_grain_chem_mode', items=['HRAP Presets', 'Other Preset', 'Custom'], default_value='HRAP Presets', width=-1)
                 with dpg.table_row():
                     dpg.add_text('Chem Preset')
                     dpg.add_combo(tag='select_grain_chem_hrap_presets', items=[
                         'ABS', 'Asphalt', 'HDPE', 'HTPB_Paraffin', 'HTPB', 'Metalized_Plastisol', 'Paraffin', 'Sorbitol',
-                    ], default_value='HTPB', callback=recompile_motor)
+                    ], default_value='Metalized_Plastisol', callback=recompile_motor, width=-1)
                 
                 make_param('Fixed O/F ratio', {
                     'type': float,
                     'tag': 'grn_OF', 'direct': True,
                     'min': 0.01, 'max': 100.0,
-                    'default': 5.0,
+                    'default': 3.5,
                     'step': 1E-1,
                     'decimal': 2,
                 })
@@ -637,23 +698,23 @@ def main():
                     'decimal': 0,
                 })
                 make_param('Inner diamater', {
-                    'type': float,
+                    'type': float, 'units': 'mm',
                     'tag': 'grn_shape_ID', 'direct': True,
                     'min': 0.001,
-                    'default': 2.0 * _in,
+                    'default': 2.5 * _in,
                     'step': 1E-3,
                     'decimal': 4,
                 })
                 make_param('Outer diamater', {
-                    'type': float,
+                    'type': float, 'units': 'mm',
                     'tag': 'grn_OD', 'direct': True,
                     'min': 0.001,
-                    'default': 5.0 * _in,
+                    'default': 4.5 * _in,
                     'step': 1E-3,
                     'decimal': 4,
                 })
                 make_param('Length', {
-                    'type': float,
+                    'type': float, 'units': 'mm',
                     'tag': 'grn_L', 'direct': True,
                     'min': 0.001,
                     'default': 5.0 * _ft,
@@ -663,11 +724,11 @@ def main():
         
         # Make chamber window
         with dpg.window(tag='chamber', label='Chamber', **settings):
-            with dpg.table(header_row=False, resizable=False, borders_innerV=False, policy=dpg.mvTable_SizingStretchProp):
+            with dpg.table(**input_table_kwargs):
                 for i in range(3): dpg.add_table_column(init_width_or_weight=col_w[i])
                 
                 make_param('Volume', {
-                    'type': float,
+                    'type': float, units: 'cc',
                     'tag': 'cmbr_V0', 'key': 'V0',
                     'min': 0.0,
                     'step': 1E-4,
@@ -677,21 +738,21 @@ def main():
                     'type': float,
                     'tag': 'cstar_eff', 'key': 'cstar_eff',
                     'min': 0.01, 'max': 1.0,
-                    'default': 0.95,
+                    'default': 0.9,
                     'step': 1E-2,
                     'decimal': 2,
                 })
         
         # Make misc window
         with dpg.window(tag='misc', label='Export Config', **settings):
-            with dpg.table(header_row=False, resizable=False, borders_innerV=False, policy=dpg.mvTable_SizingStretchProp):
+            with dpg.table(**input_table_kwargs):
                 for i in range(3): dpg.add_table_column(init_width_or_weight=col_w[i])
                 
                 make_param('Motor Outer Diameter', {
                     'type': float, 'units': 'mm',
                     'tag': 'dry_OD',
                     'min': 0.0,
-                    'default': 0.0,
+                    'default': 5.0*_in,
                     'step': 1E-1,
                     'decimal': 6,
                 })
@@ -699,7 +760,7 @@ def main():
                     'type': float, 'units': 'mm',
                     'tag': 'dry_L',
                     'min': 0.0,
-                    'default': 0.0,
+                    'default': 127.78*_in,
                     'step': 1E-1,
                     'decimal': 6,
                 })
@@ -707,6 +768,7 @@ def main():
                     'type': float, 'units': 'kg',
                     'tag': 'dry_m',
                     'min': 0.0,
+                    'default': 15.69,
                     'step': 1E-1,
                     'decimal': 6,
                 })
@@ -714,7 +776,7 @@ def main():
                     'type': float, 'units': 'mm',
                     'tag': 'dry_cg',
                     'min': 0.0,
-                    'default': 0.0,
+                    'default': 1.79,
                     'step': 1E-2,
                     'decimal': 6,
                 })
@@ -730,47 +792,47 @@ def main():
                     'type': float, 'units': 'mm',
                     'tag': 'grn_pos',
                     'min': 0.0,
-                    'default': 0.0,
+                    'default': 7.0*_ft + 4.17*_in,
                     'step': 1E-2,
                     'decimal': 6,
                 })
         
         # Make nozzle window
         with dpg.window(tag='nozzle', label='Nozzle', **settings):
-            with dpg.table(header_row=False, resizable=False, borders_innerV=False, policy=dpg.mvTable_SizingStretchProp):
+            with dpg.table(**input_table_kwargs):
                 for i in range(3): dpg.add_table_column(init_width_or_weight=col_w[i])
                 
                 make_param('Discharge Coefficient', {
                     'type': float,
                     'tag': 'noz_Cd', 'direct': True,
                     'min': 0.01, 'max': 1.0,
-                    'default': 0.9,
+                    'default': 0.995,
                     'step': 1E-2,
-                    'decimal': 2,
+                    'decimal': 3,
                 })
                 make_param('Efficiency', {
                     'type': float,
                     'tag': 'noz_eff', 'direct': True,
                     'min': 0.01, 'max': 1.0,
-                    'default': 0.9,
+                    'default': 0.97,
                     'step': 1E-2,
-                    'decimal': 2,
+                    'decimal': 3,
                 })
                 make_param('Throat Diameter [m]', {
-                    'type': float,
+                    'type': float, 'units': 'mm',
                     'tag': 'noz_thrt',
                     'key': 'thrt',
                     'min': 0.001,
-                    'default': 1.5 * _in,
+                    'default': 1.75 * _in,
                     'step': 1E-3,
                     'decimal': 3,
                     'man_call': man_call_noz_thrt,
                 })
                 make_param('Exit Diameter', {
-                    'type': float,
+                    'type': float, 'units': 'mm',
                     'tag': 'noz_exit',
                     # 'key': None,
-                    # 'min': 0.001,
+                    'min': 0.0, # Just keeps positive, Exit/Throat limits
                     # 'default': 5.0,
                     'step': 1E-3,
                     'decimal': 5,
@@ -780,7 +842,7 @@ def main():
                     'type': float,
                     'tag': 'noz_ER', 'direct': True,
                     'min': 1.001,
-                    'default': 5.0,
+                    'default': 4.99,
                     'step': 1E-1,
                     'decimal': 3,
                     'man_call': man_call_noz_ER,

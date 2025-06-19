@@ -15,24 +15,33 @@ _L = 1E-3
 _m3 = 1.0
 _gal = 0.00378541
 
-_lbm = 0.4535924
-_lbf  = 4.44822162
-
 _Pa = 1.0
 _kPa = 1E3
 _atm = 101325
-_psi = 6894.757
+_psi = 6895.0
+
+_g = 1E-3
+_kg = 1.0
+_lbm = 0.4536
+
+_N = 1.0
+_kN = 1E3
+_lbf  = 4.448
 
 unit_conversions = {
     'length':  {'mm': _mm, 'cm': _cm, 'm': _m, 'in': _in, 'ft': _ft},
     'volume':  {'cc': _cc, 'L': _L, 'm^3': _m3, 'gal': _gal},
     'pressure': {'kPa': _kPa, 'atm': _atm, 'psi': _psi},
+    'mass': {'g': _g, 'kg': _kg, 'lbm': _lbm},
+    'force': {'N': _N, 'kN': _kN, 'lbf': _lbf},
     # 'temperature': {'deg C': , 'K': 1.0, 'deg F': }
 }
 inv_unit_conversions = {
     'length':  {},
     'volume':  {},
-    'pressure':  {},
+    'pressure': {},
+    'mass': {},
+    'force': {},
 }
 for unit_type, units in unit_conversions.items():
     for unit, val in units.items():

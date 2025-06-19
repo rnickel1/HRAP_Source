@@ -25,6 +25,9 @@ class StaticVar(object):
         else:
             return self.v == other
 
+def make_dict(base={}, **kwargs):
+    return kwargs if base == None else { **base, **kwargs }
+
 
 
 def make_part(s, x, req_s, req_x, dx, typename=None, fpreprs=None, fderiv=None, fupdate=None, **kwargs):
