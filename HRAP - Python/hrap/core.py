@@ -219,17 +219,9 @@ def make_integrator(fstep, method):
 
     # Note that under compilation, xmap etc. become fixed
     def run_solver(s, x, dt=1E-2, T=10.0, do_init=True, method=method):
-        # Initialize solution field
-        # x = e
-        
         # Initialize integration variables
         t = 0.0
-        # x = 
-        # dx, resQ = jnp.zeros_like(Q), jnp.zeros_like(Q)
-
-        # for i_dx in method.diff_dmap:
-        #     method
-
+        
         # Determine number of time step, one less than number of records
         Nt = int(np.floor(T / dt))
         xstack = jnp.zeros((Nt+1, x.size))
@@ -242,20 +234,15 @@ def make_integrator(fstep, method):
         # xstack = xstack.at[0, :].set(x)
 
         # Run solver while loop and record elapsed wall time
-        # wall_t1 = time.time()
         t = jnp.arange(Nt+1)*dt
         _, _, x, _, xstack = jax.lax.fori_loop(0, Nt, step_t, (dt, s, x, method['xmap'], xstack)) # TODO: jit outside!
         xstack = xstack.at[-1, :].set(x)
         # for i in range(1, Nt+1):
         #     t, _, _, x, _, xstack = step_t(i, (t, dt, s, x, method['xmap'], xstack))
-        # wall_t2 = time.time()
-
-        # print('Solved in', wall_t2 - wall_t1, 's')
 
         return t, x, xstack
     
     return run_solver
-    # TODO: use pytree vmap
 
 def get_impulse_class(value_Ns: float) -> str:
     index = int(np.floor(np.log(value_Ns / 2.5)/np.log(2))) + 1
