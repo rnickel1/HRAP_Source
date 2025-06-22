@@ -4,10 +4,11 @@ sys.path.insert(1, '../HRAP/')
 import scipy
 import numpy as np
 from pathlib import Path
+from importlib.resources import files as imp_files
 
 import matplotlib.pyplot as plt
 
-import cantera as ct
+# import cantera as ct
 
 import hrap.core as core
 import hrap.chem as chem
@@ -18,65 +19,45 @@ from hrap.nozzle  import *
 from hrap.sat_nos import *
 from hrap.units   import _in, _ft, _lbf, _atm
 
+
 jax.config.update("jax_enable_x64", True)
 # np.random.seed(42)
 
 
 
-# # PVC Plastisol in Cantera format
-# plastisol_yaml = """
-# species:
-# - name: Plastisol-362
-#   composition:
-#     C: 7.200
-#     H: 10.82
-#     O: 1.14
-#     Cl: 0.669
-#   thermo:
-#     model: constant-cp
-#     T0: 298.15 # K
-#     h0: -265.35755 # kJ/mol
-#     s0: 0.0 # J/mol-K
-# """
-
-# # gas = ct.Solution('nasa_gas.yaml')
-# gas = ct.Solution(thermo="ideal-gas", species=ct.Species.list_from_file("nasa_gas.yaml"))
-
-# # mix = ct.Mixture([gas])
-
-# # mix.set_mole_fractions({'CH4_cond': 0.5, 'C2H6_cond': 0.5}) # Example: 50/50 mix of condensed fuels
-# # takes kg fuel / kg mix, fuel, oxidizer (units for latter 2 from basis)
-# gas.set_mixture_fraction(1/3.5, 'H2', 'N2O', basis='mole')
-# # gas.set_mixture_fraction(1/3.5, 'Plastisol-362', 'N2O', basis='mole')
-# gas.TP = 298.0, ct.one_atm * 10
-# # gas.T = 298.0  # Kelvin
-# # gas.P = ct.one_atm * 10 # Pascals
-
-# gas.equilibrate('HP')
-
-# # TODO: plot equivalence ratio for fun?
-
-# print(f"Equilibrium Temperature: {gas.T:.2f} K")
+hrap_root = Path(imp_files('hrap'))
 
 print('Initializing chemistry...')
-plastisol = chem.make_basic_reactant(
-    formula = 'Plastisol-362',
-    composition = { 'C': 7.200, 'H': 10.82, 'O': 1.14, 'Cl': 0.669 },
-    M = 140.86, # kg/kmol
-    T0 = 298.15, # K
-    h0 = -265357.55, # J/mol
-)
+use_prebuilt_chem = True
+# use_prebuilt_chem = False
+if use_prebuilt_chem:
+    chem = scipy.io.loadmat(hrap_root/'resources'/'propellant_configs'/'Metalized_Plastisol.mat')
+    chem = chem['s'][0][0]
+    chem_OF = chem['prop_OF'].ravel()
+    chem_Pc = chem['prop_Pc'].ravel()
+    chem_k, chem_M, chem_T = chem['prop_k'], chem['prop_M'], chem['prop_T']
+    if chem_k.size == 1: chem_k = np.full_like(chem_T, chem_k.item())
+else:
+    plastisol = chem.make_basic_reactant(
+        formula = 'Plastisol-362',
+        composition = { 'C': 7.200, 'H': 10.82, 'O': 1.14, 'Cl': 0.669 },
+        M = 140.86, # kg/kmol
+        T0 = 298.15, # K
+        h0 = -265357.55, # J/mol
+    )
 
-comb = chem.ChemSolver(['./ssts_thermochem.txt', plastisol])
-print('Building combustion table')
-# TODO: separate 3-table for vapor like ssts
-chem_OF, chem_Pc = np.linspace(1.0, 10.0, 10), np.linspace(10*_atm, 50*_atm, 10)
-ox, fu = 'N2O(L),298.15K', 'Plastisol-362'
-for OF in chem_OF:
-    for Pc in chem_Pc:
-        o = OF / (1 + OF) # o/f = OF, o+f=1 => o=OF/(1 + OF)
-        res = comb.solve(Pc, {ox: (o, 298, Pc), fu: (1-o, 298, Pc)})
-        print('OF={OF}, Pc={Pc}atm'.format(OF=OF, Pc=Pc/_atm))
+    comb = chem.ChemSolver(['./ssts_thermochem.txt', plastisol])
+    print('Building combustion table')
+    # TODO: separate 3-table for vapor like ssts
+    chem_OF, chem_Pc = np.linspace(1.0, 10.0, 10), np.linspace(10*_atm, 50*_atm, 10)
+    ox, fu = 'N2O(L),298.15K', 'Plastisol-362'
+    for OF in chem_OF:
+        for Pc in chem_Pc:
+            o = OF / (1 + OF) # o/f = OF, o+f=1 => o=OF/(1 + OF)
+            res = comb.solve(Pc, {ox: (o, 298, Pc), fu: (1-o, 298, Pc)})
+            print('OF={OF}, Pc={Pc}atm'.format(OF=OF, Pc=Pc/_atm))
+
+
 
 # Initialization
 tnk = make_sat_tank(
@@ -97,7 +78,7 @@ grn = make_constOF_grain(
     OD = 4.5 * _in,
     L = 30.0 * _in,
     rho = 1117.0,
-    A = np.pi/4 * (4.5**2 - 2.5**2) * _in**2, # TODO: need to automate init of this!
+    # A = np.pi/4 * (4.5**2 - 2.5**2) * _in**2, # TODO: need to automate init of this!
 )
 
 prepost_ID = 4.25*_in                              # Inner diameter of pre and post combustion chambers (m)
@@ -107,7 +88,7 @@ fuel_V     = (30.0 * _in) * np.pi*(4.5/2 * _in)**2   # Empty volume of grain foo
 cmbr = make_chamber(
     V0 =  prepost_V + rings_V + fuel_V,            # Volume of chamber w/o grain (m^3)
     cstar_eff = 1.0,#0.95
-    m_g = 101e3*29/8314/294 * (prepost_V + rings_V + fuel_V - (30.0 * _in) * np.pi*(2.5/2 * _in)**2), # p = rho R T
+    m_g = 101e3*29/8314/294 * (prepost_V + rings_V + fuel_V - (30.0 * _in) * np.pi*(2.5/2 * _in)**2), # p = rho R T # TODO auto
 )
 
 noz = make_cd_nozzle(
@@ -116,22 +97,6 @@ noz = make_cd_nozzle(
     eff = 0.97,
     C_d = 0.995,
 )
-
-# chem = scipy.io.loadmat('../../propellant_configs/HTPB.mat')
-# from importlib.resources import files as imp_files
-# chem = scipy.io.loadmat(str(imp_files('hrap').joinpath('HTPB.mat')))
-
-# chem = chem['s'][0][0]
-# chem_OF = chem[1].ravel()
-# chem_Pc = chem[0].ravel()
-# chem_k = chem[2]
-# chem_M = chem[3]
-# chem_T = chem[4]
-# print(chem_OF)
-# print(chem_Pc)
-# # print(chem_k)
-
-# print(chem_k.shape, chem_OF.shape)
 
 from jax.scipy.interpolate import RegularGridInterpolator
 chem_interp_k = RegularGridInterpolator((chem_OF, chem_Pc), chem_k, fill_value=1.4)
@@ -155,26 +120,21 @@ fire_engine = core.make_integrator(
 )
 
 # Integrate the engine state
-T = 10.0
+T = 12.0
 # T = 10E-2
+print('Running...')
 import time
-print('run 1')
 t1 = time.time()
 t, _x, xstack = fire_engine(s, x, dt=1E-3, T=T)
 jax.block_until_ready(xstack)
 t2  = time.time()
-print('run 2')
 t, x, xstack = fire_engine(s, x, dt=1E-3, T=T)
 jax.block_until_ready(xstack)
 t3 = time.time()
-# print('run 2')
-# TODO: new x0!
-# t, x, xstack = fire_engine(s, x, dt=1E-2, T=T)
-print('done', t3-t2, t2-t1)
-N_t = xstack.shape[0]
-# print(xstack.shape)
+print('done, first run was {a:.2f}s, second run was {b:.2f}s'.format(a=t3-t2, b=t2-t1))
 
 # Unpack the dynamic engine state
+N_t = xstack.shape[0]
 tnk, grn, cmbr, noz = core.unpack_engine(s, xstack, method)
 # print('tnk', tnk.keys())
 # print('grn', grn.keys())
@@ -193,13 +153,13 @@ results_path = Path('./results')
 results_path.mkdir(parents=True, exist_ok=True)
 
 OD, L = 5*_in, 10*_ft
-core.save_rse(
+core.export_rse(
     results_path/'nitrous_plastic.rse',
-    t, noz['thrust'], noz['mdot'], t*0, t*0,
+    t, noz['thrust'].ravel(), noz['mdot'].ravel(), t*0, t*0,
     OD=OD, L=L, D_throat=s['noz_thrt'], D_exit=np.sqrt(s['noz_ER'])*s['noz_thrt'],
     motor_type='hybrid', mfg='HRAP',
 )
-core.save_eng(
+core.export_eng(
     results_path/'nitrous_plastic.eng',
     t, noz['thrust'], t*0,
     OD=OD, L=L,
@@ -249,7 +209,6 @@ axs[5].plot(np.linspace(0.0, T, N_t), grn['d'], label='net regression')
 axs[5].legend()
 
 axs[6].plot(np.linspace(0.0, T, N_t), noz['Me'], label='Mach exit')
-# axs[5].plot(np.linspace(0.0, T, N_t), grn['V'], label='grain volume')
 axs[6].legend()
 
 # axs[7].plot(np.linspace(0.0, T, N_t), cmbr['V0'] - 0*grn['V'], label='cmbr V0')
@@ -265,17 +224,15 @@ axs[8].legend()
 
 
 # Write thrust validation, big hybrid 7-26-23
-daq = np.genfromtxt(str(imp_files('hrap').joinpath('hybrid_fire_7_26_23.csv')), delimiter=',', names=True, dtype=float, encoding='utf-8', deletechars='')
+daq = np.genfromtxt(hrap_root/'resources'/'validation'/'hybrid_fire_7_26_23.csv', delimiter=',', names=True, dtype=float, encoding='utf-8', deletechars='')
 axs[0].plot(daq['time'], daq['thrust']*_lbf, label='daq')
 axs[0].legend()
 # axs[0].plot()
 
 # Plot nozzle flow rate
 
-# Open plot
-# fig.show()
-
 # Save plot
+fig.tight_layout()
 fig.savefig(results_path/'nitrous_plastic_plots.pdf', format='pdf', bbox_inches='tight', pad_inches=0.1)
 
 plt.show()
