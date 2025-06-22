@@ -210,10 +210,10 @@ def make_integrator(fstep, method):
         
         x = fstep(s, x, xmap, method['diff_xmap'], method['diff_dmap'], dt, fderiv)
 
-        xstack = xstack.at[i, :].set(x)
-        
         for fupdate in method['fupdates']:
             x = fupdate(s, x, xmap)
+    
+        xstack = xstack.at[i, :].set(x)
 
         return dt, s, x, xmap, xstack
 

@@ -23,6 +23,7 @@ def d_grain_constOF(s, x, xmap, fshape):
     
     # Grain consumption rate (positive)
     mdot = mdot_inj / OF
+    mdot = cond(A <= 0.0, lambda val: 0.0, lambda val: val, mdot)
     
     # Rate of volume consumption (positive)
     Vdot = mdot / rho
@@ -45,7 +46,7 @@ def d_grain_constOF(s, x, xmap, fshape):
 def u_grain(s, x, xmap):
     x = store_x(x, xmap,
         grn_A = jnp.maximum(x[xmap['grn_A']], 0.0),
-        grn_d = jnp.minimum(x[xmap['grn_d']], s['grn_OD']/2)
+        grn_d = jnp.minimum(x[xmap['grn_d']], s['grn_OD']/2) # TODO: shouldnt be necessary
     )
     
     return x

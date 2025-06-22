@@ -67,7 +67,6 @@ tnk = make_sat_tank(
     m_ox=12.6, # TODO: init limit
     T = 294,
 )
-# print('INJ TEST', 0.5 * (np.pi/4 * 0.5**2 * _in**2))
 
 shape = make_circle_shape(
     ID = 2.5 * _in,
@@ -85,8 +84,8 @@ prepost_V  = (3.5+1.7)*_in * np.pi/4*prepost_ID**2 # Empty volume of pre and pos
 rings_V    = 3 * (1/8*_in) * np.pi*(2.5/2 * _in)**2  # Empty volume of phenolic rings (m^3)
 fuel_V     = (30.0 * _in) * np.pi*(4.5/2 * _in)**2   # Empty volume of grain footprint (m^3)
 cmbr = make_chamber(
-    V0 =  prepost_V + rings_V + fuel_V,            # Volume of chamber w/o grain (m^3)
-    # V0 = 0.0, # Sim can be a bit unstable with this and incompressible injetor
+    # V0 =  prepost_V + rings_V + fuel_V,            # Volume of chamber w/o grain (m^3)
+    V0 = 0.0, # Sim can be a bit unstable with this and incompressible injetor
     cstar_eff = 1.0,#0.95
 )
 
@@ -201,7 +200,7 @@ axs[4].plot(np.linspace(0.0, T, N_t), grn['V']*grn['rho'], label='grain')
 axs[4].legend()
 axs[4].set_title('m')
 
-D = (4.5 - 2.5)*_in
+D = (4.5 - 2.5)*_in # TODO: get
 axs[5].plot([0.0, T], [D]*2, label='grain thickness')
 axs[5].plot(np.linspace(0.0, T, N_t), grn['d'], label='net regression')
 # axs[5].plot(np.linspace(0.0, T, N_t), grn['V'], label='grain volume')
@@ -218,7 +217,13 @@ axs[7].plot(np.linspace(0.0, T, N_t), cmbr['T'], label='cmbr T')
 # axs[5].plot(np.linspace(0.0, T, N_t), grn['V'], label='grain volume')
 axs[7].legend()
 
-axs[8].plot(np.linspace(0.0, T, N_t), cmbr['k'], label='cmbr k')
+# axs[8].plot(np.linspace(0.0, T, N_t), cmbr['k'], label='cmbr k')
+axs[8].plot(np.linspace(0.0, T, N_t), cmbr['V0'] - grn['V'], label='Empty cmbr V')
+# axs[8].plot(np.linspace(0.0, T, N_t), grn['V'], label='grain volume')
+# axs[8].plot(np.linspace(0.0, T, N_t), cmbr['Pdot'], label='Pc dot')
+# axs[8].plot(np.linspace(0.0, T, N_t), grn['Vdot'], label='grain V dot')
+# axs[8].plot(np.linspace(0.0, T, N_t), grn['Vdot']/(cmbr['V0'] - grn['V']), label='Pc dot, V comb')
+# Pc*(mdot_g/m_g - dV/V)
 axs[8].legend()
 
 

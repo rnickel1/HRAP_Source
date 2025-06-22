@@ -5,9 +5,6 @@ import jax.numpy as jnp
 from jax.lax import cond
 
 def d_chamber(s, x, xmap):
-    # if s['cmbr_V'] == 0:
-    #     V = np.pi/4 * x['grn_ID']**2 * s['grn_L']
-    # else
     Pc       = x[xmap['cmbr_P']]        # Combustion chamber pressure
     grn_mdot = x[xmap['grn_mdot']]         # Rate of grain mass being consumed
     inj_mdot = x[xmap['tnk_mdot_inj']]      # Rate of tank propellants being consumed
@@ -28,7 +25,6 @@ def d_chamber(s, x, xmap):
     # Get chamber properties and update cstar
     # interp_point = jnp.array([[OF, Pc]])
     # TODO: Need an error if out of bounds?
-    # _Pc = jnp.maximum()
     ig = s['chem_interp_k'].grid # interp grid
     ip = jnp.array([[OF, Pc]]) # interp point
     for i in range(2):
@@ -37,6 +33,7 @@ def d_chamber(s, x, xmap):
     M = s['chem_interp_M'](ip)[0]
     T = s['chem_interp_T'](ip)[0]
     # jax.debug.print('cmbr, k={a}, M={b}, T={c} from OF={d}, Pc={e}', a=k, b=M, c=T, d=OF, e=Pc)
+    
     R = 8314.5 / M
     rho = Pc/(R * T)
     cstar = s['cmbr_cstar_eff']*jnp.sqrt((R*T)/(k*(2/(k+1))**((k+1)/(k-1))))
@@ -48,24 +45,21 @@ def d_chamber(s, x, xmap):
 
 # Preprocessing
 def p_chamber(s, x0, xmap):
-    A0 = x0[xmap['grn_A']]
     V0 = x0[xmap['cmbr_V0']]
     
-    V0 = cond(V0 == 0.0, lambda Va, Vb: Vb, lambda Va, Vb: Va,   V0, s['grn_L']*(jnp.pi/4*s['grn_OD']**2 - A0))
-    m0 = (101e3*29/8314/294) * V0 # p = rho R T # TODO auto
+    V0 = cond(V0 == 0.0, lambda Va, Vb: Vb, lambda Va, Vb: Va,   V0, s['grn_L']*(jnp.pi/4*s['grn_OD']**2))
+    m_g0 = (101e3*29/8314/294) * V0 # p = rho R T
 
-    x0 = store_x(x0, xmap, cmbr_V0=V0, cmbr_m_g=m0)
+    x0 = store_x(x0, xmap, cmbr_V0=V0, cmbr_m_g=m_g0)
 
     return x0
 
 def u_chamber(s, x, xmap):
-    # print('CAGAGA', x[xmap['cmbr_P']])
     # Limit stored and gas and pressure to reasonable values
     x = store_x(x, xmap,
         cmbr_m_g = jnp.maximum(x[xmap['cmbr_m_g']],     0.0),
         cmbr_P   = jnp.maximum(x[xmap['cmbr_P']],   s['Pa']),
     )
-    # print('CAGAGA0', x[xmap['cmbr_P']])
     
     return x
 

@@ -63,6 +63,14 @@ def d_cd_nozzle(s, x, xmap):
 
     return x
 
+def u_cd_nozzle(s, x, xmap):
+    # Limit thrust to positive
+    x = store_x(x, xmap,
+        noz_thrust = jnp.maximum(x[xmap['noz_thrust']], 0.0),
+    )
+    
+    return x
+
 def make_cd_nozzle(**kwargs):
     return make_part(
         # Default static parameters
@@ -91,7 +99,7 @@ def make_cd_nozzle(**kwargs):
         # Designation and associated functions
         typename = 'noz',
         fderiv   = d_cd_nozzle,
-        fupdate  = None,
+        fupdate  = u_cd_nozzle,
 
         # The user-specified s or x entries
         **kwargs,

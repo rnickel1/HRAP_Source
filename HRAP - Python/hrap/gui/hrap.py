@@ -732,14 +732,14 @@ def main():
                 
                 make_param('Volume', {
                     'type': float, units: 'cc',
-                    'tag': 'cmbr_V0', 'key': 'V0',
+                    'tag': 'cmbr_V0', 'direct': True,
                     'min': 0.0,
                     'step': 1E-4,
                     'decimal': 6,
                 })
                 make_param('C* Efficiency', {
                     'type': float,
-                    'tag': 'cstar_eff', 'key': 'cstar_eff',
+                    'tag': 'cmbr_cstar_eff', 'direct': True,
                     'min': 0.01, 'max': 1.0,
                     'default': 1.0,
                     'step': 1E-2,
