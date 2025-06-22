@@ -58,6 +58,13 @@ def make_circle_shape(**kwargs):
     def fcircle(d, s, x, xmap):
         return np.pi * (s['grn_shape_ID'] + 2*d)
     
+    def preprs(s, x, xmap):
+        OD, ID = s['grn_OD'], s['grn_shape_ID']
+        A = np.pi/4 * (OD**2 - ID**2)
+        x = x.at[xmap['grn_A']].set(A)
+        
+        return x
+    
     return make_part(
         # Default static and initial dynamic variables
         s = {
@@ -74,6 +81,7 @@ def make_circle_shape(**kwargs):
         typename = 'shape',
 
         fshape = fcircle,
+        fpreprs = preprs,
 
         # The user-specified static and initial dynamic variables
         **kwargs,
@@ -111,6 +119,7 @@ def make_constOF_grain(shape, **kwargs):
         typename = 'grn',
         fderiv  = partial(d_grain_constOF, fshape=shape['shape_fshape']),
         fupdate = u_grain,
+        fpreprs = shape['fpreprs'],
 
         # The user-specified static and initial dynamic variables
         **kwargs,

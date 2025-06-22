@@ -62,7 +62,7 @@ def make_part(s, x, req_s, req_x, dx, typename=None, fpreprs=None, fderiv=None, 
     
     # Add derivatives to x
     for key, val in part['dx'].items():
-        print(val, 'to', 0.0)
+        # print(val, 'to', 0.0)
         part['x'][val] = 0.0
     # part['dx'] = { 'FUCK_'+key: val for key, val in part['dx'].items() }
     # print('dx after', part['dx'])
@@ -218,7 +218,7 @@ def make_integrator(fstep, method):
         return dt, s, x, xmap, xstack
 
     # Note that under compilation, xmap etc. become fixed
-    def run_solver(s, x, dt=1E-2, T=10.0, method=method):
+    def run_solver(s, x, dt=1E-2, T=10.0, do_init=True, method=method):
         # Initialize solution field
         # x = e
         
@@ -235,8 +235,9 @@ def make_integrator(fstep, method):
         xstack = jnp.zeros((Nt+1, x.size))
         # print('AGFFSAGAGS', x[method['xmap']['tnk_m_ox']])
 
-        for fpreprs in method['fpreprs']:
-            x = fpreprs(s, x, method['xmap'])
+        if do_init:
+            for fpreprs in method['fpreprs']:
+                x = fpreprs(s, x, method['xmap'])
         
         # xstack = xstack.at[0, :].set(x)
 
@@ -267,7 +268,7 @@ def get_impulse_class(value_Ns: float) -> str:
 def bin_resample_series(t, bins, *v):
     Ibin = np.searchsorted(bins, t) # Bin index of each bin
     Nbin = np.bincount(Ibin) # Number of samples in each bin
-    it = np.argwhere(Nbin > 0.0)
+    it = np.argwhere(Nbin > 0)[:,0]
     # Average quantity in each bin and remove bins with no samples
     # TODO: better to weight by incoming time step size if nonuniform to preserve impulse
     w = [(np.bincount(Ibin, y) / Nbin)[it] for y in v]
@@ -341,7 +342,7 @@ def export_eng(
     OD, L,
     mfg,
 ):
-    Itot, T_burn = np.trapezoid(F, t), t[-1] - t[0]    
+    Itot, T_burn = np.trapezoid(F, t), t[-1] - t[0]
 
     # Downsample data using bin averaging
     bins = np.linspace(0.0, T_burn, 32)
