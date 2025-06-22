@@ -51,8 +51,9 @@ def p_chamber(s, x0, xmap):
     V0 = x0[xmap['cmbr_V0']]
     
     V0 = cond(V0 == 0.0, lambda Va, Vb: Vb, lambda Va, Vb: Va,   V0, s['grn_L']*s['grn_OD'])
+    m0 = (101e3*29/8314/294) * V0 # p = rho R T # TODO auto
 
-    x0 = store_x(x0, xmap, cmbr_V0=V0)
+    x0 = store_x(x0, xmap, cmbr_V0=V0, cmbr_m_g=m0)
 
     return x0
 

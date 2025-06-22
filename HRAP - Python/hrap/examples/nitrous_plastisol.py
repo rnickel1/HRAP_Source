@@ -78,7 +78,6 @@ grn = make_constOF_grain(
     OD = 4.5 * _in,
     L = 30.0 * _in,
     rho = 1117.0,
-    # A = np.pi/4 * (4.5**2 - 2.5**2) * _in**2, # TODO: need to automate init of this!
 )
 
 prepost_ID = 4.25*_in                              # Inner diameter of pre and post combustion chambers (m)
@@ -88,7 +87,6 @@ fuel_V     = (30.0 * _in) * np.pi*(4.5/2 * _in)**2   # Empty volume of grain foo
 cmbr = make_chamber(
     V0 =  prepost_V + rings_V + fuel_V,            # Volume of chamber w/o grain (m^3)
     cstar_eff = 1.0,#0.95
-    m_g = 101e3*29/8314/294 * (prepost_V + rings_V + fuel_V - (30.0 * _in) * np.pi*(2.5/2 * _in)**2), # p = rho R T # TODO auto
 )
 
 noz = make_cd_nozzle(
