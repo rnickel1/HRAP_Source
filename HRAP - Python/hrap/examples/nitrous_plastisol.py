@@ -86,6 +86,7 @@ rings_V    = 3 * (1/8*_in) * np.pi*(2.5/2 * _in)**2  # Empty volume of phenolic 
 fuel_V     = (30.0 * _in) * np.pi*(4.5/2 * _in)**2   # Empty volume of grain footprint (m^3)
 cmbr = make_chamber(
     V0 =  prepost_V + rings_V + fuel_V,            # Volume of chamber w/o grain (m^3)
+    # V0 = 0.0, # Sim can be a bit unstable with this and incompressible injetor
     cstar_eff = 1.0,#0.95
 )
 

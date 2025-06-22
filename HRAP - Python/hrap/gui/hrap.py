@@ -222,7 +222,7 @@ def setup_motor(tnk_inj_vap_model, tnk_inj_liq_model, chem_interp_k, chem_interp
     )
 
     noz = make_cd_nozzle(
-        thrt = 1.5 * _in, # Throat diameter
+        thrt = 1.75 * _in, # Throat diameter
         ER = 5.0,         # Exit/throat area ratio
     )
 
@@ -720,7 +720,7 @@ def main():
                     'type': float, 'units': 'mm',
                     'tag': 'grn_L', 'direct': True,
                     'min': 0.001,
-                    'default': 5.0 * _ft,
+                    'default': 30.0 * _in,
                     'step': 1E-2,
                     'decimal': 4,
                 })
@@ -741,7 +741,7 @@ def main():
                     'type': float,
                     'tag': 'cstar_eff', 'key': 'cstar_eff',
                     'min': 0.01, 'max': 1.0,
-                    'default': 0.9,
+                    'default': 1.0,
                     'step': 1E-2,
                     'decimal': 2,
                 })
@@ -906,13 +906,9 @@ def main():
         
             T = 10.0
             t10 = time.time()
-            # print('run 1')
-            # t, x1, xstack = fire_engine(s, x, dt=1E-3, T=T)
             t, _, xstack = fire_engine(s, x, dt=1E-3, T=T)
-            # print('run 2')
             jax.block_until_ready(xstack)
             xstack = np.copy(xstack)
-            # print('run 3')
             # tnk, grn, cmbr, noz = _unpack_engine(s, xstack)
             
             N_t = xstack.shape[0]

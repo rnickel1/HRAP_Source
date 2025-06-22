@@ -48,9 +48,10 @@ def d_chamber(s, x, xmap):
 
 # Preprocessing
 def p_chamber(s, x0, xmap):
+    A0 = x0[xmap['grn_A']]
     V0 = x0[xmap['cmbr_V0']]
     
-    V0 = cond(V0 == 0.0, lambda Va, Vb: Vb, lambda Va, Vb: Va,   V0, s['grn_L']*s['grn_OD'])
+    V0 = cond(V0 == 0.0, lambda Va, Vb: Vb, lambda Va, Vb: Va,   V0, s['grn_L']*(jnp.pi/4*s['grn_OD']**2 - A0))
     m0 = (101e3*29/8314/294) * V0 # p = rho R T # TODO auto
 
     x0 = store_x(x0, xmap, cmbr_V0=V0, cmbr_m_g=m0)
