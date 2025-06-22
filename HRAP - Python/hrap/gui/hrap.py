@@ -183,16 +183,10 @@ def init_deps(): # Called after init/load to verify consistency
 def load_preset_chem(name):
     chem = scipy.io.loadmat(hrap_root/'resources'/'propellant_configs'/name)
     
-    # print(chem.keys())
-    # print(chem['s'][0][0]['opt_OF'])
     chem = chem['s'][0][0]
-    # Plastisol: gamma, m, name, OF, temp, ?, ?, T
     chem_OF = chem['prop_OF'].ravel()
     chem_Pc = chem['prop_Pc'].ravel()
     chem_k, chem_M, chem_T = chem['prop_k'], chem['prop_M'], chem['prop_T']
-    # opt_OF, prop_Rho, prop_nm, prop_Reg
-    # print(chem)
-    # print(chem_OF.shape, chem_Pc.shape, chem_k.shape, chem_M.shape, chem_T.shape, chem_k[0])
     if chem_k.size == 1: chem_k = np.full_like(chem_T, chem_k.item())
 
     chem_interp_k = RegularGridInterpolator((chem_OF, chem_Pc), chem_k, fill_value=1.4)
