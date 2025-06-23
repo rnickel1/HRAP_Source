@@ -306,8 +306,9 @@ def main():
     
     def save_config(file):
         save, save_config = { }, { }
+        # TODO: save options like units etc.? should save injector model etc...
         for tag in config:
-            save_config[tag] = dpg.get_value(tag)
+            save_config[tag] = get_param(tag)
         save['hrap_version'] = hrap_version
         save['config'] = save_config
         print(save)
@@ -671,13 +672,16 @@ def main():
                 
                 with dpg.table_row():
                     dpg.add_text('Grain Shape')
-                    dpg.add_combo(tag='select_shape', items=['Cylindrical', 'Star', 'Custom'], default_value='Cylindrical', width=-1)
+                    # dpg.add_combo(tag='select_shape', items=['Cylindrical', 'Star', 'Custom'], default_value='Cylindrical', width=-1)
+                    dpg.add_combo(tag='select_shape', items=['Cylindrical'], default_value='Cylindrical', width=-1)
                 with dpg.table_row():
                     dpg.add_text('Rate Law')
-                    dpg.add_combo(tag='select_regression', items=['Constant O/F', 'Regression Rate'], default_value='Constant O/F', width=-1)
+                    # dpg.add_combo(tag='select_regression', items=['Constant O/F', 'Regression Rate'], default_value='Constant O/F', width=-1)
+                    dpg.add_combo(tag='select_regression', items=['Constant O/F'], default_value='Constant O/F', width=-1)
                 with dpg.table_row():
                     dpg.add_text('Chem Mode')
-                    dpg.add_combo(tag='select_grain_chem_mode', items=['HRAP Presets', 'Other Preset', 'Custom'], default_value='HRAP Presets', width=-1)
+                    # dpg.add_combo(tag='select_grain_chem_mode', items=['HRAP Presets', 'Other Preset', 'Custom'], default_value='HRAP Presets', width=-1)\
+                    dpg.add_combo(tag='select_grain_chem_mode', items=['HRAP Presets'], default_value='HRAP Presets', width=-1)
                 with dpg.table_row():
                     dpg.add_text('Chem Preset')
                     dpg.add_combo(tag='select_grain_chem_hrap_presets', items=[
