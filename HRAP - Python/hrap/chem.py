@@ -55,7 +55,7 @@ class NASA9(object):
     # Nondimensionalized specific heat, Cp/Rhat
     def get_Cp_D(self, T):
         return self.coeffs[0]/(T*T) + self.coeffs[1]/T   + self.coeffs[2]      + \
-               self.coeffs[3]*T     + self.coeffs[4]*T*T + self.coeffs[5]*T**2 + \
+               self.coeffs[3]*T     + self.coeffs[4]*T*T + self.coeffs[5]*T**3 + \
                self.coeffs[6]*T**4
     
     # Nondimensionalized specific enthalpy, H/(Rhat*T)
@@ -257,16 +257,16 @@ class ChemSolver:
     # k is each relevant element
     def ReducedEQ0k(self, k, x):
         result = -x.b_i0[k] # -b_k0
+        # print('eq 0 1', result)
 
         a_kj_n_J = x.gas_prod_a[k] * x.n_j[x.gas_prod_I[k]] # a_kj*n_j
         # print('ReducedEQ0k', k, x.subs[k].formula, a_kj_n_J.shape)
         for j, a_kj_n_j in zip(x.gas_prod_I[k], a_kj_n_J): # All substances containing this element
             result += np.sum(a_kj_n_j * x.subs_a[j] * x.pi_i[x.subs_I[j]]) # Sum across all elements in the substance, a_kj*a_ij*n_j*pi_i
             result += a_kj_n_j*x.Deltaln_n # a_kj*n_j*Deltaln_n
-            H_D_j, S_D_j = x.subs[j].get_H_D(x.T), x.subs[j].get_S_D(x.T) # H_j/(R*T)
-            result += a_kj_n_j*H_D_j*x.Deltaln_T # a_kj*n_j*H_j/(R*T)*Deltaln_T
-            # TODO: check Gibb's formula!
-            result -= a_kj_n_j*(H_D_j-S_D_j+np.log(x.n_j[j]/x.n)+np.log(x.P/1.0E5)) # a_kj*n_j*mu_j/(R*T)
+            result += a_kj_n_j*x.subs_H_D[j]*x.Deltaln_T # a_kj*n_j*H_j/(R*T)*Deltaln_T
+            # # TODO: check Gibb's formula!
+            result -= a_kj_n_j*(x.subs_H_D[j]-x.subs_S_D[j]+np.log(x.n_j[j]/x.n)+np.log(x.P/1.0E5)) # a_kj*n_j*mu_j/(R*T)
             result += a_kj_n_j # b_k contribution, a_kj*n_j
 
         # sum across condensed, a_kj*Deltan_j
@@ -281,7 +281,7 @@ class ChemSolver:
     def ReducedEQ1j(self, j, x):
         # TODO: How is Gibb's treated for condensed???
         # H_jstd/(R*T)*Deltaln_T-mu_j/(R*T)
-        result = x.subs[j].get_H_D(x.T)*x.Deltaln_T-(x.subs[j].get_H_D(x.T)-x.subs[j].get_S_D(x.T))
+        result = x.subs_H_D[j]*x.Deltaln_T-(x.subs_H_D[j]-x.subs_S_D[j])
         result += np.sum(subs_a[j] * x.pi_i[subs_I[j]]) # sum across elements, a_ij*pi_i
 
         return result
@@ -293,10 +293,9 @@ class ChemSolver:
             # TODO: SUS
             #result += (iter.n_j[j] - iter.n) * iter.Deltaln_n; # (n_j-n)*Deltaln_n
             result += x.n_j[j] * x.Deltaln_n; # (n_j-n)*Deltaln_n
-            H_D_j, S_D_j = x.subs[j].get_H_D(x.T), x.subs[j].get_S_D(x.T) # H_j/(R*T)
-            result += x.n_j[j]*H_D_j*x.Deltaln_T; # n_j*H_jstd/(R*T)*Deltaln_T
+            result += x.n_j[j]*x.subs_H_D[j]*x.Deltaln_T; # n_j*H_jstd/(R*T)*Deltaln_T
             result += x.n_j[j]; # n_j
-            result -= x.n_j[j]*(H_D_j-S_D_j+np.log(x.n_j[j]/x.n)+np.log(x.P/1.0E5)); # n_j*mu_j/(R*T)
+            result -= x.n_j[j]*(x.subs_H_D[j]-x.subs_S_D[j]+np.log(x.n_j[j]/x.n)+np.log(x.P/1.0E5)); # n_j*mu_j/(R*T)
 
         return result
 
@@ -305,7 +304,7 @@ class ChemSolver:
         
         # TODO: could get rid of several loops by computing H, S, C_p ahead of time
         for j in range(x.N_gas):
-            Cp_D, H_D_j, S_D_j = x.subs[j].get_Cp_D(x.T), x.subs[j].get_H_D(x.T), x.subs[j].get_S_D(x.T) # H_j/(R*T)
+            Cp_D, H_D_j, S_D_j = x.subs_Cp_D[j], x.subs_H_D[j], x.subs_S_D[j]
             # print(x.pi_i.shape, len(x.subs_I))
             result += np.sum(x.subs_a[j] * x.n_j[j] * H_D_j * x.pi_i[x.subs_I[j]]) # sum across i, a_ij*n_j*H_jstd/(R*T)*pi_i
             result += x.n_j[j] * H_D_j * x.Deltaln_n; # n_j*H_jstd/(R*T)*Deltaln_n
@@ -345,6 +344,9 @@ class ChemSolver:
 
         # TODO: sub should only check formula as we use .index here - not anymore
         subs: list[ThermoSubstance] # N_subs
+        subs_Cp_D: np.ndarray # Current ubstance properties
+        subs_H_D: np.ndarray
+        subs_S_D: np.ndarray
         subs_I: list[np.ndarray] # N_subs array containing local element indices
         subs_a: list[np.ndarray] # Corresponding amount of the element
 
@@ -390,7 +392,7 @@ class ChemSolver:
             for elem, amount in substance.composition.items():
                 if not elem in present_elements:
                     present_elements.append(elem)
-        present_elements = sorted(present_elements)
+        # present_elements = sorted(present_elements) # TODO
 
         x = internal_state
         if x != None: # Check that provided internal_state is usable
@@ -411,7 +413,8 @@ class ChemSolver:
                         gas.append(sub)
             x.subs = gas + cond
             x.N_sub, x.N_gas, x.N_cond = len(x.subs), len(gas), len(cond)
-
+            
+            x.subs_Cp_D, x.subs_H_D, x.subs_S_D = [np.zeros(x.N_sub) for i in range(3)]
             x.subs_I, x.subs_a = [], []
             for i, sub in enumerate(x.subs):
                 sub_I, sub_a = [], []
@@ -465,6 +468,11 @@ class ChemSolver:
         
         iter = 1
         while iter <= max_iters:
+            # Update properties
+            for i in range(x.N_sub):
+                prov = x.subs[i].get_prov(x.T) # Piecewise NASA9 instance
+                x.subs_Cp_D[i], x.subs_H_D[i], x.subs_S_D[i] = prov.get_Cp_D(x.T), prov.get_H_D(x.T), prov.get_S_D(x.T)
+            
             rhs = np.zeros(N_dof)
             # equation 0, per element
             for k in range(x.N_elem):
@@ -474,68 +482,70 @@ class ChemSolver:
                 rhs[j] = self.ReducedEQ1j(j, x)
             rhs[x.N_elem + x.N_cond]     = self.ReducedEQ2(x)
             rhs[x.N_elem + x.N_cond + 1] = self.ReducedEQ3(x)
+            # print('func evals', rhs[:x.N_elem], rhs[-2:])
             
             jac = np.zeros((N_dof, N_dof))
             for k in range(x.N_elem):
                 # for (const std::pair<int, double>& ja : relatedGasousSubstances[k]) {
                 for j, n in zip(x.gas_prod_I[k], x.gas_prod_a[k]):
-                    H_D_j = x.subs[j].get_H_D(x.T)
                     # Per-element equation partial derivatives of pi_i, sum across k rows and i columns, a_kj*a_ij*n_j
-                    jac[x.subs_I[j], k] += np.sum(n * x.subs_a[j] * x.n_j[x.subs_I[j]])
+                    jac[x.subs_I[j], k] += n * x.subs_a[j] * x.n_j[j]
                     # Per-element equation partial derivative of Deltaln_T
-                    jac[-1, k] += n * x.n_j[j] * H_D_j # a_kj*n_j*H_jstd/(R*T)
+                    jac[-1, k] += n * x.n_j[j] * x.subs_H_D[j] # a_kj*n_j*H_jstd/(R*T)
                     # Per-element equation partial derivative of Deltaln_n
                     jac[-2, k] += n * x.n_j[j] # a_kj*n_j
                 # Per-element equation partial derivatives of Deltan_j
                 if x.N_cond>0: jac[x.N_elem + (x.cond_prod_I[k] - x.N_gas), k] += x.cond_prod_a[k]
             for j in range(x.N_gas, x.N_sub):
-                H_D_j = x.subs[j].get_H_D(x.T)
                 # Per-condensed-species equation partial derivatives of pi_i
                 if x.N_cond>0: jac[x.cond_prod_I[j], x.N_elem + (j - x.N_gas)] += x.cond_prod_a[j] # sum i, a_ij
                 # Per-element equation partial derivative of Deltaln_T
-                jac[-1, (x.N_elem + (j-x.N_gas))] = H_D_j
+                jac[-1, (x.N_elem + (j-x.N_gas))] = x.subs_H_D[j]
                 # Enthalpy conservation equation partial derivatives of Deltan_j
-                jac[x.N_elem + (j-x.N_gas), N-1] = H_D_j
+                jac[x.N_elem + (j-x.N_gas), N-1] = x.subs_H_D[j]
             jac[-2, -2] = -x.n
             for j in range(x.N_gas):
-                Cp_D, H_D_j = x.subs[j].get_Cp_D(x.T), x.subs[j].get_H_D(x.T)
                 # Molar balance equation partial derivatives of pi_i
                 jac[x.subs_I[j], -2] += x.subs_a[j] * x.n_j[j] # a_ij*n_j
                 # Enthalpy conservation equation partial derivatives of pi_i
-                jac[x.subs_I[j], -1] += x.subs_a[j] * x.n_j[j] * H_D_j # a_ij*n_j*H_jstd/(R*T)
+                jac[x.subs_I[j], -1] += x.subs_a[j] * x.n_j[j] * x.subs_H_D[j] # a_ij*n_j*H_jstd/(R*T)
 
                 # Molar balance equation partial derivative of Deltaln_n
                 jac[-2, -2] += x.n_j[j]
                 # Molar balance equation partial derivative of Deltaln_T
-                jac[-1, -2] += x.n_j[j]*H_D_j # n_j*H_jstd/(R*T)
+                jac[-1, -2] += x.n_j[j]*x.subs_H_D[j] # n_j*H_jstd/(R*T)
             
                 # Enthalpy conservation equation partial derivative of Deltaln_n
-                jac[-2, -1] += x.n_j[j]*H_D_j # n_j*H_jstd/(R*T)
+                jac[-2, -1] += x.n_j[j]*x.subs_H_D[j] # n_j*H_jstd/(R*T)
                 # Enthalpy conservation equation partial derivative of Deltaln_T
-                jac[-1, -1] += x.n_j[j]*(Cp_D+H_D_j**2) # (n_j*Cp_jstd/R+n_j*H_jstd^2/(R^2*T^2));
+                jac[-1, -1] += x.n_j[j]*(x.subs_Cp_D[j]+x.subs_H_D[j]**2) # (n_j*Cp_jstd/R+n_j*H_jstd^2/(R^2*T^2))
+                # std::cerr << iter.T << " " << iter.n_j[j] << " " << substances[j]->GetCp_D(iter.T) << " " << H_D_j << std::endl;
+                # print(j, x.T, x.n_j[j], Cp_D, H_D_j)
+            # print('bal', len(x.n_j), x.N_gas, np.sum(x.n_j), x.n)
 
             # Newton method update
             # TODO: line search if singular?
+            # print(jac)
             upd = np.linalg.solve(jac, rhs)
             x.pi_i -= upd[:x.N_elem]
             x.Deltan_j -= upd[x.N_elem:x.N_elem+x.N_cond]
             x.Deltaln_n -= upd[N_dof - 2]
             x.Deltaln_T -= upd[N_dof - 1]
+            # print('upd', upd)
 
             # Empirical lambda formulas suggested by NASA
             lambda1 = 5.0*np.max([np.abs(x.Deltaln_T), np.abs(x.Deltaln_n)])
             lambda2 = float('inf')
             for j in range(x.N_gas):
-                H_D_j, S_D_j = x.subs[j].get_H_D(x.T), x.subs[j].get_S_D(x.T) # H_j/(R*T)
-                x.Deltan_j_gas[j] = x.Deltaln_n + H_D_j*x.Deltaln_T - \
-                    (H_D_j-S_D_j+np.log(x.n_j[j]/x.n)+np.log(x.P/1.0E5))
+                x.Deltan_j_gas[j] = x.Deltaln_n + x.subs_H_D[j]*x.Deltaln_T - \
+                    (x.subs_H_D[j]-x.subs_S_D[j]+np.log(x.n_j[j]/x.n)+np.log(x.P/1.0E5))
                 x.Deltan_j_gas[j] += np.sum(x.subs_a[j] * x.pi_i[x.subs_I[j]]) # sum across i, a_ij*pi_i
                 
                 v = np.abs(x.Deltan_j_gas[j])
                 if v > lambda1: lambda1 = v
                 ln_nj_n = np.log(x.n_j[j]/x.n)
                 if ln_nj_n <= -18.420681 and x.Deltan_j_gas[j] >= 0.0:
-                    v = np.abs((-ln_nj_n-9.2103404) / (iter.Deltan_j_gas[j]-iter.Deltaln_n))
+                    v = np.abs((-ln_nj_n-9.2103404) / (x.Deltan_j_gas[j]-x.Deltaln_n))
                     if v < lambda2:
                         lambda2 = v
             
@@ -569,6 +579,7 @@ class ChemSolver:
         if iter == max_iters + 1: iter = max_iters # If terminated due to max_iters, will be 1 too high
 
         result = self.Result(True)
+        result.iters = iter
         result.T = x.T
         result.M = 1/x.n
         result.R = Rhat / result.M
@@ -607,10 +618,10 @@ class ChemSolver:
         for j in range(x.N_gas):
             if x.n_j[j] > 1.0E-7:
                 M[x.subs_I[j], -1] += x.n_j[j] * np.sum(x.subs_a[j]) # a_ij*n_j
-                tempDerivs [-1] -= x.n_j[j] * x.subs[j].get_H_D(x.T) # n_j*H_jstd/(R*T)
-                pressDerivs[-1] += x.n_j[j] # n_j
+                dT[-1] -= x.n_j[j] * x.subs[j].get_H_D(x.T) # n_j*H_jstd/(R*T)
+                dP[-1] += x.n_j[j] # n_j
 
-        dT, dP = np.linalg.solve(M, np.stack([dT, dP], axis=-1)).unstack(axis=-1)
+        dT, dP = np.unstack(np.linalg.solve(M, np.stack([dT, dP], axis=-1)), axis=-1)
 
         # TODO: If we are including condensed in Cp shouldn't they be in M too?
         result.Cp = np.sum([x.n_j[j] * x.subs[j].get_Cp_D(x.T) for j in range(x.N_sub)]) # Frozen contribution
@@ -625,8 +636,8 @@ class ChemSolver:
             result.Cp += x.n_j[j]*(H_Dstd*dT[N_dof-1]+H_Dstd**2);
         result.Cp *= Rhat
 
-        dlnV_dlnT = dT[N-1] + 1.0 # dlnn/dlnT+1
-        dlnV_dlnP = dP[N-1] - 1.0 # dlnn/dlnP-1
+        dlnV_dlnT = dT[-1] + 1.0 # dlnn/dlnT+1
+        dlnV_dlnP = dP[-1] - 1.0 # dlnn/dlnP-1
         result.Cv      = result.Cp + result.R*dlnV_dlnT**2/dlnV_dlnP
         result.gamma   = result.Cp / result.Cv
         result.gamma_s = -result.gamma / dlnV_dlnP

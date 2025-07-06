@@ -28,8 +28,8 @@ jax.config.update("jax_enable_x64", True)
 hrap_root = Path(imp_files('hrap'))
 
 print('Initializing chemistry...')
-use_prebuilt_chem = True
-# use_prebuilt_chem = False
+# use_prebuilt_chem = True
+use_prebuilt_chem = False
 if use_prebuilt_chem:
     chem = scipy.io.loadmat(hrap_root/'resources'/'propellant_configs'/'Metalized_Plastisol.mat')
     chem = chem['s'][0][0]
@@ -54,7 +54,7 @@ else:
     for OF in chem_OF:
         for Pc in chem_Pc:
             o = OF / (1 + OF) # o/f = OF, o+f=1 => o=OF/(1 + OF)
-            res = comb.solve(Pc, {ox: (o, 298, Pc), fu: (1-o, 298, Pc)})
+            res = comb.solve(Pc, {ox: (o, 298, 1*_atm), fu: (1-o, 298, 1*_atm)})
             print('OF={OF}, Pc={Pc}atm'.format(OF=OF, Pc=Pc/_atm))
 
 
