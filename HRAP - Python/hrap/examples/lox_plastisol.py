@@ -12,49 +12,21 @@ import matplotlib.pyplot as plt
 
 import hrap.core as core
 import hrap.chem as chem
+import hrap.sat_coolprop as sat_coolprop
 from hrap.tank    import *
 from hrap.grain   import *
 from hrap.chamber import *
 from hrap.nozzle  import *
-from hrap.sat_nos import *
 from hrap.units   import _in, _ft, _lbf, _atm
 
 
 jax.config.update("jax_enable_x64", True)
 # np.random.seed(42)
+
+
+
 hrap_root = Path(imp_files('hrap'))
 
-
-
-print('Initializing chemistry...')
-# use_prebuilt_chem = True
-use_prebuilt_chem = False
-if use_prebuilt_chem:
-    chem = scipy.io.loadmat(hrap_root/'resources'/'propellant_configs'/'Metalized_Plastisol.mat')
-    chem = chem['s'][0][0]
-    chem_OF = chem['prop_OF'].ravel()
-    chem_Pc = chem['prop_Pc'].ravel()
-    chem_k, chem_M, chem_T = chem['prop_k'], chem['prop_M'], chem['prop_T']
-    if chem_k.size == 1: chem_k = np.full_like(chem_T, chem_k.item())
-else:
-    plastisol = chem.make_basic_reactant(
-        formula = 'Plastisol-362',
-        composition = { 'C': 7.200, 'H': 10.82, 'O': 1.14, 'Cl': 0.669 },
-        M = 140.86, # kg/kmol
-        T0 = 298.15, # K
-        h0 = -265357.55, # J/mol
-    )
-
-    comb = chem.ChemSolver(['./ssts_thermochem.txt', plastisol])
-    print('Building combustion table')
-    # TODO: separate 3-table for vapor like ssts
-    chem_OF, chem_Pc = np.linspace(1.0, 10.0, 10), np.linspace(10*_atm, 50*_atm, 10)
-    ox, fu = 'N2O(L),298.15K', 'Plastisol-362'
-    for OF in chem_OF:
-        for Pc in chem_Pc:
-            o = OF / (1 + OF) # o/f = OF, o+f=1 => o=OF/(1 + OF)
-            res = comb.solve(Pc, {ox: (o, 298, 1*_atm), fu: (1-o, 298, 1*_atm)})
-            print('OF={OF}, Pc={Pc}atm'.format(OF=OF, Pc=Pc/_atm))
 print('Loading chemistry table...')
 chem = scipy.io.loadmat(hrap_root/'resources'/'propellant_configs'/'Metalized_Plastisol.mat')
 chem = chem['s'][0][0]
@@ -63,15 +35,18 @@ chem_Pc = chem['prop_Pc'].ravel()
 chem_k, chem_M, chem_T = chem['prop_k'], chem['prop_M'], chem['prop_T']
 if chem_k.size == 1: chem_k = np.full_like(chem_T, chem_k.item())
 
+print('Initializing lox saturation table...')
+get_sat_lox_props = sat_coolprop.bake_sat_props('Oxygen', np.linspace(75, 150, 20))
+
 
 
 # Initialization
 tnk = make_sat_tank(
-    get_sat_nos_props,
+    get_sat_lox_props,
     V = (np.pi/4 * 4.75**2 * _in**2) * (7.0 * _ft),
     inj_CdA= 0.22 * (np.pi/4 * 0.5**2 * _in**2),
     m_ox=12.6, # TODO: init limit
-    T = 294,
+    T = 125,
 )
 
 shape = make_circle_shape(
@@ -157,18 +132,18 @@ results_path = Path('./results')
 results_path.mkdir(parents=True, exist_ok=True)
 
 OD, L = 5*_in, 10*_ft
-core.export_rse(
-    results_path/'nitrous_plastic.rse',
-    t, noz['thrust'].ravel(), noz['mdot'].ravel(), t*0, t*0,
-    OD=OD, L=L, D_throat=s['noz_thrt'], D_exit=np.sqrt(s['noz_ER'])*s['noz_thrt'],
-    motor_type='hybrid', mfg='HRAP',
-)
-core.export_eng(
-    results_path/'nitrous_plastic.eng',
-    t, noz['thrust'], t*0,
-    OD=OD, L=L,
-    mfg='HRAP',
-)
+# core.export_rse(
+    # results_path/'nitrous_plastic.rse',
+    # t, noz['thrust'].ravel(), noz['mdot'].ravel(), t*0, t*0,
+    # OD=OD, L=L, D_throat=s['noz_thrt'], D_exit=np.sqrt(s['noz_ER'])*s['noz_thrt'],
+    # motor_type='hybrid', mfg='HRAP',
+# )
+# core.export_eng(
+    # results_path/'nitrous_plastic.eng',
+    # t, noz['thrust'], t*0,
+    # OD=OD, L=L,
+    # mfg='HRAP',
+# )
 
 
 

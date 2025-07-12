@@ -119,21 +119,6 @@ def d_sat_tank(s, x, xmap, get_sat_props):
         vnt_CdA, T, ox['Z'], Matm
     )
     
-    # Get injected vapor or liquid oxidizer mass flow rate
-    # mdot_inj = cond(
-    #     m_liq <= 1E-3,
-    #     lambda m_vap, inj_CdA, inj_N, T, Z, Mcc, rho_l, dP: cond(
-    #         m_vap <= 0.0,
-    #         lambda *vargs:
-    #             0.0,
-    #         lambda inj_CdA, inj_N, T, Z, Mcc, dP:
-    #             (inj_CdA*inj_N*Pt/jnp.sqrt(T))*jnp.sqrt(1.31/(Z*188.91))*Mcc*(1+(0.31)/2*Mcc**2)**(-2.31/0.62),
-    #         inj_CdA, inj_N, T, ox['Z'], Mcc, dP
-    #     ),
-    #     lambda m_vap, inj_CdA, inj_N, T, Z, Mcc, rho_l, dP:
-    #         inj_CdA*inj_N*jnp.sqrt(2*rho_l*dP),
-    #     m_vap, inj_CdA, inj_N, T, ox['Z'], Mcc, rho_l, dP
-    # )
     # Select injector models at compile time
     def inj_liq_model(m_vap, inj_NCdA, T, Z, Mcc, rho_l, rho_v, dP):
         if s['tnk_inj_liq_model'] == 'Incompressible':
@@ -144,6 +129,7 @@ def d_sat_tank(s, x, xmap, get_sat_props):
         elif s['tnk_inj_vap_model'] == 'Real Gas':
             return (inj_NCdA*Pt/jnp.sqrt(T))*jnp.sqrt(1.31/(Z*188.91))*Mcc*(1+(0.31)/2*Mcc**2)**(-2.31/0.62)
 
+    # Get injected vapor or liquid oxidizer mass flow rate
     mdot_inj = cond(
         m_liq <= 1E-3,
         lambda m_vap, inj_NCdA, T, Z, Mcc, rho_l, rho_v, dP: cond(
