@@ -482,7 +482,9 @@ class ChemSolver:
                 rhs[j] = self.ReducedEQ1j(j, x)
             rhs[x.N_elem + x.N_cond]     = self.ReducedEQ2(x)
             rhs[x.N_elem + x.N_cond + 1] = self.ReducedEQ3(x)
-            # print('func evals', rhs[:x.N_elem], rhs[-2:])
+            
+            print('func evals', rhs[:x.N_elem], rhs[-2:])
+            exit()
             
             jac = np.zeros((N_dof, N_dof))
             for k in range(x.N_elem):

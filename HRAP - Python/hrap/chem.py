@@ -333,61 +333,43 @@ class ChemSolver:
                     present_elements.append(elem)
         # present_elements = sorted(present_elements) # TODO
 
-        x = internal_state
-        if x != None: # Check that provided internal_state is usable
-            if present_elements != x.present_elements:
+        x, xm = internal_state
+        if xm != None: # Check that provided internal_state is usable
+            if present_elements != xm.present_elements:
                 print('Warning: provided internal state is not usable due to differing elemental composition, rebuilding...')
-                x = None
-        if x == None:
-            x = self.InternalState(present_elements)
+                xm = None
+        if xm == None:
+            x, xm = self.InternalState(), self.InternalState()
             x.N_elem = len(present_elements)
-            x.gas_prod_I, x.gas_prod_a, x.cond_prod_I, x.cond_prod_a = [[[] for i in range(x.N_elem)] for i in range(4)]
+            # x.gas_prod_I, x.gas_prod_a, x.cond_prod_I, x.cond_prod_a = [[[] for i in range(x.N_elem)] for i in range(4)]
             
-            gas, cond = [], []
+            xm.gasses = []
             for sub in self.substances.values():
                 if sub.is_product:
                     # TODO: temp cutoff too like SSTS?
                     if not sub.condensed and all([elem in present_elements for elem in sub.composition]):
                         # print('RELEVANT GAS', sub.formula, sub.condensed)
-                        gas.append(sub)
-            x.subs = gas + cond
-            x.N_sub, x.N_gas, x.N_cond = len(x.subs), len(gas), len(cond)
-            
-            x.subs_Cp_D, x.subs_H_D, x.subs_S_D = [np.zeros(x.N_sub) for i in range(3)]
-            x.subs_I, x.subs_a = [], []
-            for i, sub in enumerate(x.subs):
-                sub_I, sub_a = [], []
+                        xm.gasses.append(sub)
+            xm.N_gas = len(xm.gasses)
+
+            xm.gas_a = np.zeros((xm.N_gas, xm.N_elem))
+            for i, gas in enumerate(xm.gasses):
                 for elem, amount in sub.composition.items():
                     j = present_elements.index(elem)
-                    if i < x.N_gas:
-                        
-                        x.gas_prod_I[j].append(i)
-                        x.gas_prod_a[j].append(amount)
-                    else:
-                        x.cond_prod_I[j].append(i)
-                        x.cond_prod_a[j].append(amount)
-                    sub_I.append(j)
-                    sub_a.append(amount)
-
-                x.subs_I.append(np.array(sub_I, dtype=int)), x.subs_a.append(np.array(sub_a, dtype=float))
+                    xm.gas_a[i, j] = amount
+            xm.gas_a = jnp.array(xm.gas_a)
             
-            # Convert element to substance arrays to np arrays
-            x.gas_prod_I, x.gas_prod_a, x.cond_prod_I, x.cond_prod_a = [[np.array(arr) for arr in coll] for coll in [x.gas_prod_I, x.gas_prod_a, x.cond_prod_I, x.cond_prod_a]]
-
             reinit = True
 
         if reinit:
             x.T = 3000 # K, current temperature
             x.n = 0.1 # total kmol/kg
-            x.n_j = np.ones(x.N_gas) * 0.1 / x.N_gas
-            if x.N_cond > 0.0:
-                x.n_j = np.concatenate([x.n_j, np.zeros(x.N_cond)])
-            x.pi_i = np.zeros(x.N_elem)
+            x.n_j = jnp.ones(xm.N_gas) * 0.1 / xm.N_gas
+            x.pi_i = jnp.zeros(xm.N_elem)
             x.Deltaln_n = 0.0
             x.Deltaln_T = 0.0
-            x.Deltan_j = np.zeros(x.N_cond)
-            x.Deltan_j_gas = np.zeros(x.N_gas)
-            x.b_i0 = np.zeros(x.N_elem)
+            x.Deltan_j = jnp.zeros(xm.N_gas)
+            x.b_i0 = jnp.zeros(xm.N_elem)
         
         # Begin from supply
         x.P = Pc
@@ -409,10 +391,12 @@ class ChemSolver:
             # Update properties
             for i in range(x.N_sub):
                 prov = x.subs[i].get_prov(x.T) # Piecewise NASA9 instance
-                x.subs_Cp_D[i], x.subs_H_D[i], x.subs_S_D[i] = prov.get_Cp_D(x.T), prov.get_H_D(x.T), prov.get_S_D(x.T)
+                x.gas_Cp_D[i], x.gas_H_D[i], x.gas_S_D[i] = prov.get_Cp_D(x.T), prov.get_H_D(x.T), prov.get_S_D(x.T)
             
             rhs = np.zeros(N_dof)
             rhs[:xm.N_elem] = jax.vmap(ReducedEQ0k, (0, 1, None, None))(x.b_i0, xm.gas_a * x.n_j[:,None], x, xm)
             # rhs[-2] = self.ReducedEQ2(x)
             # rhs[-1] = self.ReducedEQ3(x)
+            print('func evals', rhs[:x.N_elem], rhs[-2:])
+            exit()
         
