@@ -137,6 +137,17 @@ def make_basic_reactant(formula: str, composition: dict, M: float, T0: float, h0
     """
     return ThermoSubstance(formula, '', condensed, False, { k.upper(): v for k, v in composition.items() }, M, [NASA9(0.9*T0, 1.1*T0, h0, [0.0]*2+[h0/Rhat/T0]+[0.0]*5)], 0.9*T0, 1.1*T0)
 
+def ReducedEQ0k(b_k0, a_kj_n_J, x, xm):
+    # a_kj_n_J is each a_kj*n_j, j in 1...N_gas
+    result = -b_k0
+    result += jnp.sum((a_kj_n_J[:,None] * xm.gas_a) * x.pi_i[None,:]) # Sum across all elements in the substance, a_kj*a_ij*n_j*pi_i, arrays broadcast along each gas
+    result += jnp.sum(a_kj_n_J*x.Deltaln_n) # a_kj*n_j*Deltaln_n
+    result += jnp.sum(a_kj_n_J*x.gas_H_D*x.Deltaln_T) # a_kj*n_j*H_j/(R*T)*Deltaln_T
+    result -= jnp.sum(a_kj_n_J*(x.gas_H_D-x.gas_S_D+jnp.log(x.n_j/x.n)+jnp.log(x.P/1.0E5))) # a_kj*n_j*mu_j/(R*T)
+    result += jnp.sum(a_kj_n_J) # b_k contribution, a_kj*n_j
+    # jax.debug.print('a {a}', a=a_kj_n_J)
+    return result
+
 @dataclass
 class ChemSolver:
     substances: Dict[str, ThermoSubstance]
@@ -311,16 +322,6 @@ class ChemSolver:
         gas_Cp_D: np.ndarray # Current substance properties
         gas_H_D: np.ndarray
         gas_S_D: np.ndarray
-
-    def ReducedEQ0k(b_k0, a_kj_n_J, x, xm):
-        # a_kj_n_J is each a_kj*n_j, j in 1...N_gas
-        result = -b_k0
-        result += jnp.sum((a_kj_n_J[:,None] * xm.gas_a) * x.pi_i[None,:]) # Sum across all elements in the substance, a_kj*a_ij*n_j*pi_i, arrays broadcast along each gas
-        result += jnp.sum(a_kj_n_J*x.Deltaln_n) # a_kj*n_j*Deltaln_n
-        result += jnp.sum(a_kj_n_J*x.gas_H_D*x.Deltaln_T) # a_kj*n_j*H_j/(R*T)*Deltaln_T
-        result -= jnp.sum(a_kj_n_J*(x.gas_H_D-x.gas_S_D+jnp.log(x.n_j/x.n)+jnp.log(x.P/1.0E5))) # a_kj*n_j*mu_j/(R*T)
-        result += jnp.sum(a_kj_n_J) # b_k contribution, a_kj*n_j
-        return result
     
     def solve(self, Pc, supply, max_iters=200, internal_state=None, reinit=True):
         # Basic input checks
@@ -336,14 +337,14 @@ class ChemSolver:
                     present_elements.append(elem)
         # present_elements = sorted(present_elements) # TODO
 
-        x, xm = internal_state
-        if xm != None: # Check that provided internal_state is usable
+        if internal_state != None: # Check that provided internal_state is usable
+            x, xm = internal_state
             if present_elements != xm.present_elements:
                 print('Warning: provided internal state is not usable due to differing elemental composition, rebuilding...')
-                xm = None
-        if xm == None:
-            x, xm = self.InternalState(), self.InternalState()
-            x.N_elem = len(present_elements)
+                internal_state = None
+        if internal_state == None:
+            x, xm = self.InternalState(*([None]*14)), self.InternalMeta(*([None]*5)) # Init with None as we will populate
+            xm.N_elem = len(present_elements)
             # x.gas_prod_I, x.gas_prod_a, x.cond_prod_I, x.cond_prod_a = [[[] for i in range(x.N_elem)] for i in range(4)]
             
             xm.gasses = []
@@ -357,7 +358,7 @@ class ChemSolver:
 
             xm.gas_a = np.zeros((xm.N_gas, xm.N_elem))
             for i, gas in enumerate(xm.gasses):
-                for elem, amount in sub.composition.items():
+                for elem, amount in gas.composition.items():
                     j = present_elements.index(elem)
                     xm.gas_a[i, j] = amount
             xm.gas_a = jnp.array(xm.gas_a)
@@ -378,6 +379,7 @@ class ChemSolver:
         x.P = Pc
         x.h_0 = 0.0
         # print('all x subs', x.subs)
+        x.b_i0 = np.zeros(xm.N_elem)
         for formula, inputs in supply.items():
             sub = self.substances[formula]
             m_frac, T, P = inputs
@@ -387,19 +389,27 @@ class ChemSolver:
             for elem, amount in sub.composition.items():
                 x.b_i0[present_elements.index(elem)] += amount * n_j # Loop across elements
         x.b_i0_max = np.max(x.b_i0)
+        x.b_i0 = jnp.array(x.b_i0)
 
-        N_dof = x.N_elem + 2
+        N_dof = xm.N_elem + 2
         iter = 1
         while iter <= max_iters:
             # Update properties
-            for i in range(x.N_sub):
-                prov = x.subs[i].get_prov(x.T) # Piecewise NASA9 instance
+            # for i in range(x.N_sub):
+                # prov = x.subs[i].get_prov(x.T) # Piecewise NASA9 instance
+                # x.gas_Cp_D[i], x.gas_H_D[i], x.gas_S_D[i] = prov.get_Cp_D(x.T), prov.get_H_D(x.T), prov.get_S_D(x.T)
+            x.gas_Cp_D, x.gas_H_D, x.gas_S_D = [np.zeros(xm.N_gas) for i in range(3)]
+            for i in range(xm.N_gas):
+                prov = xm.gasses[i].get_prov(x.T) # Piecewise NASA9 instance
                 x.gas_Cp_D[i], x.gas_H_D[i], x.gas_S_D[i] = prov.get_Cp_D(x.T), prov.get_H_D(x.T), prov.get_S_D(x.T)
+            # TODO: could be beneficial to batch arrays inside internal thermo and use vmap here
+            # x.gas_H_D = jax.scan()
             
             rhs = np.zeros(N_dof)
+            # print('gas a', xm.gas_a)
             rhs[:xm.N_elem] = jax.vmap(ReducedEQ0k, (0, 1, None, None))(x.b_i0, xm.gas_a * x.n_j[:,None], x, xm)
             # rhs[-2] = self.ReducedEQ2(x)
             # rhs[-1] = self.ReducedEQ3(x)
-            print('func evals', rhs[:x.N_elem], rhs[-2:])
-            exit()
+            print('func evals', rhs[:xm.N_elem], rhs[-2:])
+            return 0,0
         

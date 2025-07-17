@@ -260,7 +260,8 @@ class ChemSolver:
         # print('eq 0 1', result)
 
         a_kj_n_J = x.gas_prod_a[k] * x.n_j[x.gas_prod_I[k]] # a_kj*n_j
-        # print('ReducedEQ0k', k, x.subs[k].formula, a_kj_n_J.shape)
+        # print('a', a_kj_n_J)
+        # # print('ReducedEQ0k', k, x.subs[k].formula, a_kj_n_J.shape)
         for j, a_kj_n_j in zip(x.gas_prod_I[k], a_kj_n_J): # All substances containing this element
             result += np.sum(a_kj_n_j * x.subs_a[j] * x.pi_i[x.subs_I[j]]) # Sum across all elements in the substance, a_kj*a_ij*n_j*pi_i
             result += a_kj_n_j*x.Deltaln_n # a_kj*n_j*Deltaln_n
@@ -484,7 +485,7 @@ class ChemSolver:
             rhs[x.N_elem + x.N_cond + 1] = self.ReducedEQ3(x)
             
             print('func evals', rhs[:x.N_elem], rhs[-2:])
-            exit()
+            return 0,0
             
             jac = np.zeros((N_dof, N_dof))
             for k in range(x.N_elem):
