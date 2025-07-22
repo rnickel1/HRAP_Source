@@ -1,9 +1,6 @@
 # Purpose: Demonstrate API usage for a typical hybrid, case is similar to GUI defaults
 # Authors: Thomas Scott
 
-import sys
-sys.path.insert(1, '../HRAP/')
-
 import scipy
 import numpy as np
 from pathlib import Path
@@ -58,13 +55,6 @@ else:
             o = OF / (1 + OF) # o/f = OF, o+f=1 => o=OF/(1 + OF)
             res = comb.solve(Pc, {ox: (o, 298, 1*_atm), fu: (1-o, 298, 1*_atm)})
             print('OF={OF}, Pc={Pc}atm'.format(OF=OF, Pc=Pc/_atm))
-print('Loading chemistry table...')
-chem = scipy.io.loadmat(hrap_root/'resources'/'propellant_configs'/'Metalized_Plastisol.mat')
-chem = chem['s'][0][0]
-chem_OF = chem['prop_OF'].ravel()
-chem_Pc = chem['prop_Pc'].ravel()
-chem_k, chem_M, chem_T = chem['prop_k'], chem['prop_M'], chem['prop_T']
-if chem_k.size == 1: chem_k = np.full_like(chem_T, chem_k.item())
 
 
 

@@ -1,9 +1,6 @@
 # Purpose: Demonstrate API for arbitrary saturated fluids with a LOX hybrid example
 # Authors: Thomas Scott
 
-import sys
-sys.path.insert(1, '../HRAP/')
-
 import scipy
 import numpy as np
 from pathlib import Path
