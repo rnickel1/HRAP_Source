@@ -1,3 +1,6 @@
+# Purpose: Model the blowdown of saturated fluids in a simple tank
+# Authors: Drew Nickel, Thomas A. Scott
+
 from hrap.core import store_x, make_part, StaticVar
 
 import jax

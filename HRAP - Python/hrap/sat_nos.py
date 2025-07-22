@@ -1,3 +1,6 @@
+# Purpose: Provide experimentally curve-fit saturated nitrous properties
+# Ported from HRAP, originally from ?
+
 import jax.numpy as jnp
 
 def get_sat_nos_props(T):

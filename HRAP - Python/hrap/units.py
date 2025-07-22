@@ -1,3 +1,6 @@
+# Purpose: Provide unit conversions to and from SI units
+# Authors: Thomas A. Scott
+
 # Internal units:
 #   Length      - meters
 #   Time        - seconds

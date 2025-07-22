@@ -1,3 +1,6 @@
+# Purpose: Provide chamber dynamics from tabulated chemical equilibrum properties
+# Authors: Drew Nickel, Thomas A. Scott
+
 from hrap.core import store_x, make_part
 
 import jax

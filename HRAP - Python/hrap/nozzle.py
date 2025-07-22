@@ -1,3 +1,6 @@
+# Purpose: Provide throat mass flow rate and nozzle exit conditions (using frozen equilibrium from chamber)
+# Authors: Drew Nickel, Thomas A. Scott
+
 from hrap.core import store_x, make_part
 
 import numpy as np

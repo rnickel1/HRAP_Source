@@ -1,4 +1,5 @@
-# Author: Thomas A. Scott, https://www.scott-aero.com/
+# Purpose: Provide signed distance function (SDF) utilities for use in regression of arbitrary grain geometries
+# Authors: Thomas A. Scott
 
 import numpy as np
 

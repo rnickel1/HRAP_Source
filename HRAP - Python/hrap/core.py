@@ -1,3 +1,6 @@
+# Purpose: Provide simple utilities needed for the core functionality
+# Authors: Thomas A. Scott
+
 import time
 from functools import partial
 from dataclasses import dataclass

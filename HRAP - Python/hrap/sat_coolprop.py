@@ -1,3 +1,6 @@
+# Purpose: Wrapper for coolprop to provide compilable property tables
+# Authors: Thomas A. Scott
+
 import numpy as np
 import jax.numpy as jnp
 import CoolProp.CoolProp as CP
@@ -12,8 +15,8 @@ def bake_sat_props(fluid, T_eval):
         _Z    [i] = CP.PropsSI('Z', 'T', T, 'Q', 1, fluid)
         _Cp   [i] = CP.PropsSI('CPMASS', 'T', T, 'Q', 1, fluid)
         _Hv   [i] = CP.PropsSI('H', 'T', T, 'Q', 1, fluid) - CP.PropsSI('H', 'T', T, 'Q', 0, fluid)
-    print(_Pv)
-    print(_Hv)
+    # print(_Pv)
+    # print(_Hv)
     
     # TODO: enable extrap? gives NaNs when off
     # Construct monotomic cubic splines to interpolate

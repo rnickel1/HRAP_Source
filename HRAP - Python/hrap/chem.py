@@ -1,8 +1,9 @@
-# Author: Thomas A. Scott, https://www.scott-aero.com/
+# Purpose: Provide HP (inputs are reactant enthalpy and fixed pressure) chemical equilibrium via Gibb's free energy minimization for use in chamber calculations
+# Author: Thomas A. Scott
 
 # HP Gibb's free energy minimization (specified input enthalpy and pressure)
 # Note: RPA, CEA, PROPEP all use the same algorithm
-# Why make this? Because pypropep is broken and abandoned, pycea requires uses to install Fortran, and Cantera's equilibrium solver has been broken for over a decade. That is, there are no suitable Python alternatives.
+# Why make this? Because pypropep is abandoned and broken for modern Python, pycea requires users to manually install Fortran, and Cantera's equilibrium solver has been broken for over a decade. That is, there are no Python libraries suitable for a ready-to-use application.
 
 # Condensed species are mostly implemented but disabled as the procedure of solving for gas only before adding condensed to solve coupled proved necessary
 

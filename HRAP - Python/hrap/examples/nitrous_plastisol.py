@@ -1,3 +1,6 @@
+# Purpose: Demonstrate API usage for a typical hybrid, case is similar to GUI defaults
+# Authors: Thomas Scott
+
 import sys
 sys.path.insert(1, '../HRAP/')
 
