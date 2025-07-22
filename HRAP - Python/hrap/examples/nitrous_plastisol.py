@@ -27,8 +27,8 @@ hrap_root = Path(imp_files('hrap'))
 
 
 print('Initializing chemistry...')
-# use_prebuilt_chem = True
-use_prebuilt_chem = False
+use_prebuilt_chem = True
+# use_prebuilt_chem = False
 if use_prebuilt_chem:
     chem = scipy.io.loadmat(hrap_root/'resources'/'propellant_configs'/'Metalized_Plastisol.mat')
     chem = chem['s'][0][0]
@@ -135,7 +135,7 @@ t2  = time.time()
 t, x, xstack = fire_engine(s, x, dt=1E-3, T=T)
 jax.block_until_ready(xstack)
 t3 = time.time()
-print('done, first run was {a:.2f}s, second run was {b:.2f}s'.format(a=t3-t2, b=t2-t1))
+print('done, first run was {a:.2f}s, second run was {b:.2f}s'.format(a=t2-t1, b=t3-t2))
 
 # Unpack the dynamic engine state
 N_t = xstack.shape[0]
@@ -157,14 +157,15 @@ results_path = Path('./results')
 results_path.mkdir(parents=True, exist_ok=True)
 
 OD, L = 5*_in, 10*_ft
+file_prefix = 'nitrous_plastisol'
 core.export_rse(
-    results_path/'nitrous_plastic.rse',
+    results_path/(file_prefix+'.rse'),
     t, noz['thrust'].ravel(), noz['mdot'].ravel(), t*0, t*0,
     OD=OD, L=L, D_throat=s['noz_thrt'], D_exit=np.sqrt(s['noz_ER'])*s['noz_thrt'],
     motor_type='hybrid', mfg='HRAP',
 )
 core.export_eng(
-    results_path/'nitrous_plastic.eng',
+    results_path/(file_prefix+'.eng'),
     t, noz['thrust'], t*0,
     OD=OD, L=L,
     mfg='HRAP',
@@ -243,6 +244,6 @@ axs[0].legend()
 
 # Save plot
 fig.tight_layout()
-fig.savefig(results_path/'nitrous_plastic_plots.pdf', format='pdf', bbox_inches='tight', pad_inches=0.1)
+fig.savefig(results_path/(file_prefix+'_plots.pdf'), format='pdf', bbox_inches='tight', pad_inches=0.1)
 
 plt.show()
