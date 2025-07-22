@@ -1,5 +1,5 @@
-# Purpose: Demonstrate API for arbitrary saturated fluids with a LOX hybrid example
-# Authors: Thomas Scott
+# Purpose: Provide comparisons between generalized and an empirical model for nitrous in addition to a comparison between fixed and shifting O/F
+# Authors: Thomas A. Scott
 
 import scipy
 import numpy as np
@@ -10,20 +10,19 @@ import matplotlib.pyplot as plt
 
 import hrap.core as core
 import hrap.chem as chem
-import hrap.sat_coolprop as sat_coolprop
 from hrap.tank    import *
 from hrap.grain   import *
 from hrap.chamber import *
 from hrap.nozzle  import *
+from hrap.sat_nos import *
 from hrap.units   import _in, _ft, _lbf, _atm
 
 
 jax.config.update("jax_enable_x64", True)
 # np.random.seed(42)
-
-
-
 hrap_root = Path(imp_files('hrap'))
+
+
 
 print('Loading chemistry table...')
 chem = scipy.io.loadmat(hrap_root/'resources'/'propellant_configs'/'Metalized_Plastisol.mat')
@@ -33,26 +32,30 @@ chem_Pc = chem['prop_Pc'].ravel()
 chem_k, chem_M, chem_T = chem['prop_k'], chem['prop_M'], chem['prop_T']
 if chem_k.size == 1: chem_k = np.full_like(chem_T, chem_k.item())
 
-print('Initializing lox saturation table...')
-get_sat_lox_props = sat_coolprop.bake_sat_props('Oxygen', np.linspace(75, 150, 20))
-
 
 
 # Initialization
 tnk = make_sat_tank(
-    get_sat_lox_props,
+    get_sat_nos_props,
     V = (np.pi/4 * 4.75**2 * _in**2) * (7.0 * _ft),
     inj_CdA= 0.22 * (np.pi/4 * 0.5**2 * _in**2),
     m_ox=12.6, # TODO: init limit
-    T = 125,
+    T = 294,
 )
 
 shape = make_circle_shape(
     ID = 2.5 * _in,
 )
-grn = make_constOF_grain(
+constOF_grn = make_constOF_grain(
     shape,
     OF = 3.5,
+    OD = 4.5 * _in,
+    L = 30.0 * _in,
+    rho = 1117.0,
+)
+shiftOF_grn = make_shiftOF_grain(
+    shape,
+    Reg = jnp.array([]),
     OD = 4.5 * _in,
     L = 30.0 * _in,
     rho = 1117.0,
@@ -91,7 +94,6 @@ s, x, method = core.make_engine(
 # Create the function for firing engines
 #   This will be compiled the first time you call it during a run
 fire_engine = core.make_integrator(
-    # core.step_rk4,
     core.step_fe,
     method,
 )
@@ -129,21 +131,7 @@ tnk, grn, cmbr, noz = core.unpack_engine(s, xstack, method)
 results_path = Path('./results')
 results_path.mkdir(parents=True, exist_ok=True)
 
-OD, L = 5*_in, 10*_ft
-# core.export_rse(
-    # results_path/'nitrous_plastic.rse',
-    # t, noz['thrust'].ravel(), noz['mdot'].ravel(), t*0, t*0,
-    # OD=OD, L=L, D_throat=s['noz_thrt'], D_exit=np.sqrt(s['noz_ER'])*s['noz_thrt'],
-    # motor_type='hybrid', mfg='HRAP',
-# )
-# core.export_eng(
-    # results_path/'nitrous_plastic.eng',
-    # t, noz['thrust'], t*0,
-    # OD=OD, L=L,
-    # mfg='HRAP',
-# )
-
-
+file_prefix = 'nitrous_compare'
 
 # Visualization
 fig, axs = plt.subplots(nrows=3, ncols=3, figsize=(12,7))
@@ -216,6 +204,6 @@ axs[0].legend()
 
 # Save plot
 fig.tight_layout()
-fig.savefig(results_path/'nitrous_plastic_plots.pdf', format='pdf', bbox_inches='tight', pad_inches=0.1)
+fig.savefig(results_path/(file_prefix+'_plots.pdf'), format='pdf', bbox_inches='tight', pad_inches=0.1)
 
 plt.show()

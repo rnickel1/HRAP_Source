@@ -8,8 +8,6 @@ from importlib.resources import files as imp_files
 
 import matplotlib.pyplot as plt
 
-# import cantera as ct
-
 import hrap.core as core
 import hrap.chem as chem
 from hrap.tank    import *
