@@ -253,7 +253,8 @@ def get_impulse_class(value_Ns: float) -> str:
     return Iclass
 
 def bin_resample_series(t, bins, *v):
-    Ibin = np.searchsorted(bins, t) # Bin index of each bin
+    # Bins are decided such that each interval is closed on the left, last is closed on both sides
+    Ibin = np.searchsorted(bins, t, side='right')-1 # Bin index of each bin
     Nbin = np.bincount(Ibin) # Number of samples in each bin
     it = np.argwhere(Nbin > 0)[:,0]
     # Average quantity in each bin and remove bins with no samples
@@ -269,17 +270,19 @@ def export_rse(
     motor_type, mfg,
     Nt_max = 200, # Maximum export entry count
 ):
+    # Trim to nonzero window to get accurate avg thrust etc.
+    t_nz = np.argwhere(F > 0.0)
+    t_start, t_end = t_nz[0,0], t_nz[-1,0]
+    t, F, prop_mdot, m, Cg = [arr[t_start:t_end+1] for arr in [t, F, prop_mdot, m, Cg]]
+    
+    T_burn = t[-1] - t[0]
+    Itot = np.trapezoid(F, t)
     i_max = np.argmax(F); F_max = F[i_max]
 
-    # Cut tail (below 0.1% max thrust, implicitly optimistically assume any negative thrust is non physical)
-    i_cut = np.argwhere(F > 0.001*F_max)
-    if i_cut.size > 0:
-        i_cut = i_max + i_cut[-1,0]
-        t, F, prop_mdot, m, Cg = [arr[:i_cut+1] for arr in [t, F, prop_mdot, m, Cg]]
+    # Cut based on below 0.1% max thrust instead?
+    # i_cut = np.argwhere(F > 0.001*F_max)
 
-    Itot = np.trapezoid(F, t)
     prop_burnt = np.trapezoid(prop_mdot, t) # not m[0] - m[-1] due to potential venting etc.
-    T_burn = t[-1] - t[0]
 
     Isp = Itot / (prop_burnt*9.81)
     F_avg = Itot / T_burn
@@ -287,18 +290,14 @@ def export_rse(
     # TODO: uneven binning to minimize error (at sharp features)
     # Decimate to keep file small, with a filter to avoid aliasing any high rate behavior
     if t.size > Nt_max:
-        T_start, Nt_start = 0.1, Nt_max//10
+        T_start, Nt_start = t[0]+0.1, Nt_max//10
         # Use new spacing as bins and average values within nonempty bins
-        bins = np.concatenate([np.linspace(0.0, T_start, Nt_start, endpoint=False), np.linspace(T_start, T_burn, Nt_max - Nt_start)])
+        bins = np.concatenate([np.linspace(t[0], T_start, Nt_start, endpoint=False), np.linspace(T_start, t[-1], Nt_max - Nt_start)])
         t, F, prop_mdot, m, Cg = bin_resample_series(t, bins, F, prop_mdot, m, Cg)
         
-    # Add proceeding zero point and shift then add succeeding zero point (if each not present)
-    # This is mainly to be similar to eng output, is more safe for using interpolators
-    # if F[0] != 0.0:
-        # t += 1E-4
-        # t, F, prop_mdot, m, Cg = [np.insert(arr, 0, val) for arr, val in [[t,0.0], [F, 0.0], [prop_mdot, 0.0], [m, m[0]], [Cg, Cg[0]]]]
+    # Add trailing zero point and shift to be similar to eng output (if not present)
     if F[-1] != 0.0:
-        t, F, prop_mdot, m, Cg = [np.append(arr,    val) for arr, val in [[t,T_burn+1E-5], [F, 0.0], [prop_mdot, 0.0], [m, m[-1]], [Cg, Cg[-1]]]]
+        t, F, prop_mdot, m, Cg = [np.append(arr, val) for arr, val in [[t,T_burn+1E-5], [F, 0.0], [prop_mdot, 0.0], [m, m[-1]], [Cg, Cg[-1]]]]
     
     # Renormalize thrust to exactly match impulse (may have been altered slightly by resampling without weighting)
     F *= Itot / np.trapezoid(F, t)
@@ -329,17 +328,31 @@ def export_eng(
     OD, L,
     mfg,
 ):
-    Itot, T_burn = np.trapezoid(F, t), t[-1] - t[0]
+    # Since RASAero strictly forbits multiple trailing zeros, need to calculate precise burn time
+    # Due to only 32 permitted samples, start at nonzero window too
+    t_nz = np.argwhere(F > 0.0)
+    t_start, t_end = t_nz[0,0], t_nz[-1,0]
+    t = t[t_start:t_end+1]
+    F = F[t_start:t_end+1]
+    m = m[t_start:t_end+1]
+    
+    T_burn = t[-1] - t[0]
+    Itot = np.trapezoid(F, t)
+    
 
     # Downsample data using bin averaging
-    bins = np.linspace(0.0, T_burn, 32)
+    bins = np.linspace(t[0], t[-1], 31)
     t, F = bin_resample_series(t, bins, F)
+    if t.size != 31:
+        print()
+    # Last entry always set to 0 as per eng requirements
+    t = np.append(t, t[0]+T_burn*31/30)
+    F = np.append(F, 0.0)
 
-    # Last bin always set to 0 as per eng requirements then renormalize thrust to correct impulse
-    F[-1] = 0.0
+    # Renormalize thrust to ensure correct impulse
     F *= Itot / np.trapezoid(F, t)
     
     with open(out_file, 'w') as f:
-        f.write('{mfg} {OD} {L} P {propWt} {m0} {code}{F_avg}\n'.format(mfg=mfg, OD=1000.0 * OD, L=1000.0 * L, propWt=m[0] - m[-1], m0=[0], code=get_impulse_class(Itot), F_avg=int(np.round(Itot / T_burn))))
+        f.write('{mfg} {OD} {L} P {propWt} {m0} {code}{F_avg}\n'.format(mfg=mfg, OD=1000.0 * OD, L=1000.0 * L, propWt=m[0] - m[-1], m0=m[0], code=get_impulse_class(Itot), F_avg=int(np.round(Itot / T_burn))))
         for i in range(32):
             f.write(' {t} {F} \n'.format(t=t[i], F=F[i]))
