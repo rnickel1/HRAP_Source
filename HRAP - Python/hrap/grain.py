@@ -164,7 +164,7 @@ def make_shiftOF_grain(shape, **kwargs):
         s = {
             'OD': 0.1,
             'L': 0.1,
-            'Reg': jnp.zeros(3),
+            'Reg': jnp.zeros(3), # Regression coefficient (mm/s), regression exponent, length exponent
             'rho': 1000.0,
             **shape['s'],
         },

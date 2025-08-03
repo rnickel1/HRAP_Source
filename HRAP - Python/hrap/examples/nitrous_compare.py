@@ -9,7 +9,7 @@ from importlib.resources import files as imp_files
 import matplotlib.pyplot as plt
 
 import hrap.core as core
-import hrap.chem as chem
+import hrap.sat_coolprop as sat_coolprop
 from hrap.tank    import *
 from hrap.grain   import *
 from hrap.chamber import *
@@ -25,7 +25,7 @@ hrap_root = Path(imp_files('hrap'))
 
 
 print('Loading chemistry table...')
-chem = scipy.io.loadmat(hrap_root/'resources'/'propellant_configs'/'Metalized_Plastisol.mat')
+chem = scipy.io.loadmat(hrap_root/'resources'/'propellant_configs'/'ABS.mat')
 chem = chem['s'][0][0]
 chem_OF = chem['prop_OF'].ravel()
 chem_Pc = chem['prop_Pc'].ravel()
@@ -35,8 +35,15 @@ if chem_k.size == 1: chem_k = np.full_like(chem_T, chem_k.item())
 
 
 # Initialization
-tnk = make_sat_tank(
+emp_tnk = make_sat_tank(
     get_sat_nos_props,
+    V = (np.pi/4 * 4.75**2 * _in**2) * (7.0 * _ft),
+    inj_CdA= 0.22 * (np.pi/4 * 0.5**2 * _in**2),
+    m_ox=12.6, # TODO: init limit
+    T = 294,
+)
+cp_tnk = make_sat_tank(
+    sat_coolprop.bake_sat_props('NitrousOxide', np.linspace(183.0, 309.0, 20)),
     V = (np.pi/4 * 4.75**2 * _in**2) * (7.0 * _ft),
     inj_CdA= 0.22 * (np.pi/4 * 0.5**2 * _in**2),
     m_ox=12.6, # TODO: init limit
@@ -55,7 +62,7 @@ constOF_grn = make_constOF_grain(
 )
 shiftOF_grn = make_shiftOF_grain(
     shape,
-    Reg = jnp.array([]),
+    Reg = jnp.array([0.198, 0.325, 0.0]), # ABS regression coefficient (mm/s), regression exponent, length exponent
     OD = 4.5 * _in,
     L = 30.0 * _in,
     rho = 1117.0,
@@ -83,38 +90,57 @@ chem_interp_k = RegularGridInterpolator((chem_OF, chem_Pc), chem_k, fill_value=1
 chem_interp_M = RegularGridInterpolator((chem_OF, chem_Pc), chem_M, fill_value=29.0)
 chem_interp_T = RegularGridInterpolator((chem_OF, chem_Pc), chem_T, fill_value=293.0)
 
-s, x, method = core.make_engine(
-    tnk, grn, cmbr, noz,
-    chem_interp_k=chem_interp_k, chem_interp_M=chem_interp_M, chem_interp_T=chem_interp_T,
-    Pa=101e3,
-)
 
 
+# Ensure results folder exists
+results_path = Path('./results')
+results_path.mkdir(parents=True, exist_ok=True)
 
-# Create the function for firing engines
-#   This will be compiled the first time you call it during a run
-fire_engine = core.make_integrator(
-    core.step_fe,
-    method,
-)
+file_prefix = 'nitrous_compare'
 
-# Integrate the engine state
-T = 12.0
-# T = 10E-2
-print('Running...')
-import time
-t1 = time.time()
-t, _x, xstack = fire_engine(s, x, dt=1E-3, T=T)
-jax.block_until_ready(xstack)
-t2  = time.time()
-t, x, xstack = fire_engine(s, x, dt=1E-3, T=T)
-jax.block_until_ready(xstack)
-t3 = time.time()
-print('done, first run was {a:.2f}s, second run was {b:.2f}s'.format(a=t2-t1, b=t3-t2))
+# Visualization
+fig, axs = plt.subplots(nrows=2, ncols=1, figsize=(12,7))
+axs = np.array(axs).ravel()
 
-# Unpack the dynamic engine state
-N_t = xstack.shape[0]
-tnk, grn, cmbr, noz = core.unpack_engine(s, xstack, method)
+for grn_name, linestyle, grn in [('constOF', '-', constOF_grn), ('shiftOF', '--', shiftOF_grn)]:
+    for tnk_name, color, tnk in [('empirical', 'black', emp_tnk), ('coolprop', 'blue', cp_tnk)]:
+        print('Starting case', grn_name, tnk_name)
+        s, x, method = core.make_engine(
+            tnk, grn, cmbr, noz,
+            chem_interp_k=chem_interp_k, chem_interp_M=chem_interp_M, chem_interp_T=chem_interp_T,
+            Pa=101e3,
+        )
+
+        fire_engine = core.make_integrator(
+            core.step_fe,
+            method,
+        )
+
+        # Integrate the engine state
+        T = 12.0
+        # T = 10E-2
+        print('Running...')
+        import time
+        t1 = time.time()
+        t, _x, xstack = fire_engine(s, x, dt=1E-3, T=T)
+        jax.block_until_ready(xstack)
+        t2  = time.time()
+        t, x, xstack = fire_engine(s, x, dt=1E-3, T=T)
+        jax.block_until_ready(xstack)
+        t3 = time.time()
+        print('done, first run was {a:.2f}s, second run was {b:.2f}s'.format(a=t2-t1, b=t3-t2))
+
+        # Unpack the dynamic engine state
+        N_t = xstack.shape[0]
+        _tnk, _grn, _cmbr, _noz = core.unpack_engine(s, xstack, method)
+        
+        # Plot thrust
+        axs[0].plot(np.linspace(0.0, T, N_t), _noz['thrust'], color=color, linestyle=linestyle, label=grn_name+', '+tnk_name)
+        axs[0].set_title('Thrust')
+        axs[0].legend()
+        
+        axs[1].plot(np.linspace(0.0, T, N_t), _tnk['P'], color=color, linestyle=linestyle)
+        axs[1].set_title('Tank Pressure')
 # print('tnk', tnk.keys())
 # print('grn', grn.keys())
 # print('cmbr', cmbr.keys())
@@ -127,78 +153,64 @@ tnk, grn, cmbr, noz = core.unpack_engine(s, xstack, method)
 #         print(key+':', val)
 #     print()
 
-# Ensure results folder exists
-results_path = Path('./results')
-results_path.mkdir(parents=True, exist_ok=True)
+# # Plot oxidizer flow rate
+# axs[1].plot(np.linspace(0.0, T, N_t), tnk['mdot_ox'], label='mdot_ox')
+# axs[1].plot(np.linspace(0.0, T, N_t), tnk['mdot_inj'], label='mdot_inj')
+# axs[1].plot(np.linspace(0.0, T, N_t), tnk['mdot_vnt'], label='mdot_vnt')
+# axs[1].plot(np.linspace(0.0, T, N_t), grn['mdot'], label='mdot_grn')
+# axs[1].plot(np.linspace(0.0, T, N_t), noz['mdot'], label='mdot_noz')
+# axs[1].plot(np.linspace(0.0, T, N_t), cmbr['mdot_g'], label='mdot_cmbr')
+# axs[1].legend(loc='upper right')
+# axs[1].set_title('mdot')
 
-file_prefix = 'nitrous_compare'
+# axs[2].plot(np.linspace(0.0, T, N_t), cmbr['P'], label='chamber')
+# axs[2].plot(np.linspace(0.0, T, N_t), tnk['P'], label='tank')
+# axs[2].plot(np.linspace(0.0, T, N_t), noz['Pe'], label='noz exit')
+# axs[2].legend(loc='upper right')
+# axs[2].set_title('P')
 
-# Visualization
-fig, axs = plt.subplots(nrows=3, ncols=3, figsize=(12,7))
-axs = np.array(axs).ravel()
+# axs[3].plot(np.linspace(0.0, T, N_t), tnk['T'])
+# axs[3].set_title('T tank')
 
-# Plot thrust
-axs[0].plot(np.linspace(0.0, T, N_t), noz['thrust'], label='sim')
-axs[0].set_title('Thrust')
+# axs[4].plot(np.linspace(0.0, T, N_t), tnk['m_ox_liq'], label='ox liq')
+# axs[4].plot(np.linspace(0.0, T, N_t), tnk['m_ox_vap'], label='ox vap')
+# axs[4].plot(np.linspace(0.0, T, N_t), cmbr['m_g'], label='cmbr stored')
+# axs[4].plot(np.linspace(0.0, T, N_t), grn['V']*grn['rho'], label='grain')
+# axs[4].legend()
+# axs[4].set_title('m')
 
-# Plot oxidizer flow rate
-axs[1].plot(np.linspace(0.0, T, N_t), tnk['mdot_ox'], label='mdot_ox')
-axs[1].plot(np.linspace(0.0, T, N_t), tnk['mdot_inj'], label='mdot_inj')
-axs[1].plot(np.linspace(0.0, T, N_t), tnk['mdot_vnt'], label='mdot_vnt')
-axs[1].plot(np.linspace(0.0, T, N_t), grn['mdot'], label='mdot_grn')
-axs[1].plot(np.linspace(0.0, T, N_t), noz['mdot'], label='mdot_noz')
-axs[1].plot(np.linspace(0.0, T, N_t), cmbr['mdot_g'], label='mdot_cmbr')
-axs[1].legend(loc='upper right')
-axs[1].set_title('mdot')
+# D = (4.5 - 2.5)*_in # TODO: get
+# axs[5].plot([0.0, T], [D]*2, label='grain thickness')
+# axs[5].plot(np.linspace(0.0, T, N_t), grn['d'], label='net regression')
+# # axs[5].plot(np.linspace(0.0, T, N_t), grn['V'], label='grain volume')
+# axs[5].legend()
 
-axs[2].plot(np.linspace(0.0, T, N_t), cmbr['P'], label='chamber')
-axs[2].plot(np.linspace(0.0, T, N_t), tnk['P'], label='tank')
-axs[2].plot(np.linspace(0.0, T, N_t), noz['Pe'], label='noz exit')
-axs[2].legend(loc='upper right')
-axs[2].set_title('P')
+# axs[6].plot(np.linspace(0.0, T, N_t), noz['Me'], label='Mach exit')
+# axs[6].legend()
 
-axs[3].plot(np.linspace(0.0, T, N_t), tnk['T'])
-axs[3].set_title('T tank')
+# # axs[7].plot(np.linspace(0.0, T, N_t), cmbr['V0'] - 0*grn['V'], label='cmbr V0')
+# # axs[7].plot(np.linspace(0.0, T, N_t), grn['V'], label='grain V')
+# axs[7].plot(np.linspace(0.0, T, N_t), cmbr['cstar'], label='cstar')
+# axs[7].plot(np.linspace(0.0, T, N_t), cmbr['T'], label='cmbr T')
+# # axs[7].plot(np.linspace(0.0, T, N_t), cmbr['V0'] - grn['V'], label='Empty cmbr V')
+# # axs[5].plot(np.linspace(0.0, T, N_t), grn['V'], label='grain volume')
+# axs[7].legend()
 
-axs[4].plot(np.linspace(0.0, T, N_t), tnk['m_ox_liq'], label='ox liq')
-axs[4].plot(np.linspace(0.0, T, N_t), tnk['m_ox_vap'], label='ox vap')
-axs[4].plot(np.linspace(0.0, T, N_t), cmbr['m_g'], label='cmbr stored')
-axs[4].plot(np.linspace(0.0, T, N_t), grn['V']*grn['rho'], label='grain')
-axs[4].legend()
-axs[4].set_title('m')
-
-D = (4.5 - 2.5)*_in # TODO: get
-axs[5].plot([0.0, T], [D]*2, label='grain thickness')
-axs[5].plot(np.linspace(0.0, T, N_t), grn['d'], label='net regression')
-# axs[5].plot(np.linspace(0.0, T, N_t), grn['V'], label='grain volume')
-axs[5].legend()
-
-axs[6].plot(np.linspace(0.0, T, N_t), noz['Me'], label='Mach exit')
-axs[6].legend()
-
-# axs[7].plot(np.linspace(0.0, T, N_t), cmbr['V0'] - 0*grn['V'], label='cmbr V0')
-# axs[7].plot(np.linspace(0.0, T, N_t), grn['V'], label='grain V')
-axs[7].plot(np.linspace(0.0, T, N_t), cmbr['cstar'], label='cstar')
-axs[7].plot(np.linspace(0.0, T, N_t), cmbr['T'], label='cmbr T')
-# axs[7].plot(np.linspace(0.0, T, N_t), cmbr['V0'] - grn['V'], label='Empty cmbr V')
-# axs[5].plot(np.linspace(0.0, T, N_t), grn['V'], label='grain volume')
-axs[7].legend()
-
-# axs[8].plot(np.linspace(0.0, T, N_t), cmbr['k'], label='cmbr k')
-axs[8].plot(np.linspace(0.0, T, N_t), cmbr['V0'] - grn['V'], label='Empty cmbr V')
-# axs[8].plot(np.linspace(0.0, T, N_t), grn['V'], label='grain volume')
-# axs[8].plot(np.linspace(0.0, T, N_t), cmbr['Pdot'], label='Pc dot')
-# axs[8].plot(np.linspace(0.0, T, N_t), grn['Vdot'], label='grain V dot')
-# axs[8].plot(np.linspace(0.0, T, N_t), grn['Vdot']/(cmbr['V0'] - grn['V']), label='Pc dot, V comb')
-# Pc*(mdot_g/m_g - dV/V)
-axs[8].legend()
+# # axs[8].plot(np.linspace(0.0, T, N_t), cmbr['k'], label='cmbr k')
+# axs[8].plot(np.linspace(0.0, T, N_t), cmbr['V0'] - grn['V'], label='Empty cmbr V')
+# # axs[8].plot(np.linspace(0.0, T, N_t), grn['V'], label='grain volume')
+# # axs[8].plot(np.linspace(0.0, T, N_t), cmbr['Pdot'], label='Pc dot')
+# # axs[8].plot(np.linspace(0.0, T, N_t), grn['Vdot'], label='grain V dot')
+# # axs[8].plot(np.linspace(0.0, T, N_t), grn['Vdot']/(cmbr['V0'] - grn['V']), label='Pc dot, V comb')
+# # Pc*(mdot_g/m_g - dV/V)
+# axs[8].legend()
 
 
-# Write thrust validation, big hybrid 7-26-23
-daq = np.genfromtxt(hrap_root/'resources'/'validation'/'hybrid_fire_7_26_23.csv', delimiter=',', names=True, dtype=float, encoding='utf-8', deletechars='')
-axs[0].plot(daq['time'], daq['thrust']*_lbf, label='daq')
-axs[0].legend()
-# axs[0].plot()
+# # Write thrust validation, big hybrid 7-26-23
+# daq = np.genfromtxt(hrap_root/'resources'/'validation'/'hybrid_fire_7_26_23.csv', delimiter=',', names=True, dtype=float, encoding='utf-8', deletechars='')
+# axs[0].plot(daq['time'], daq['thrust']*_lbf, label='daq')
+# axs[0].legend()
+# # axs[0].plot()
 
 # Plot nozzle flow rate
 
