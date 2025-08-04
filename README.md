@@ -1,11 +1,11 @@
 # HRAP_Source
-## Hybrid Rocket Analysis Program
+The Hybrid Rocket Analysis Program (HRAP) was developed by Robert Nickel for use by the University of Tennessee Rocket Engineering Team. HRAP is a versatile tool utilizing a thermodynamic equilibrium model for  simulation of self-pressurizing hybrid rocket motors, specifically those powered with Nitrous Oxide stored as a saturated liquid-vapor mixture. 
 
-For the MATLAB version, navigate to the "Installers/MATLAB version" directory. Prerequisites for the installation include having the MATLAB runtime installed (free.) and in order to save/export data the application needs to be run as administrator.
+## Python - Hybrid Rocket Analysis Program
+Navigate to the "HRAP - Python" directory for installation and usage instructions.
 
-A Python version is also in progress but not complete yet.
-
-The Hybrid Rocket Analysis Program (HRAP) was developed by Robert Nickel for use by the University of Tennessee Rocket Engineering Team (part of the Student Space Technology Association at UTK). HRAP is a versatile tool utilizing a thermodynamic equilibrium model for  simulation of self-pressurizing hybrid rocket motors, specifically those powered with Nitrous Oxide stored as a saturated liquid-vapor mixture. 
+## MATLAB - Hybrid Rocket Analysis Program
+Navigate to the "Installers/MATLAB version" directory. Prerequisites for the installation include having the MATLAB runtime installed (free.) and in order to save/export data the application needs to be run as administrator.
 
 ## Validation Cases:
 Baltic Space HyPEx hot fire (r/rocketry user FlyingBanana)

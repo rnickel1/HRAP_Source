@@ -1,0 +1,6 @@
+__pycache__/
+results/
+/dist/
+*.egg-info/
+.VSCodeCounter/
+hrap/ssts_thermochem.txt

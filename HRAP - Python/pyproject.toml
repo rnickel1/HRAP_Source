@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hrap"
+version = "0.1.1"
+
+# dynamic = ["version"]
+# TODO: option that depends on jax[gpu] for linux
+dependencies = [
+    "jax",
+    "jaxlib",
+    "numpy",
+	"scipy",
+	"dearpygui",
+	"dearpygui_ext",
+]
+
+requires-python = ">= 3.10"
+
+authors = [
+    {name = "Drew Nickel"},
+    {name = "Thomas Scott"},
+]
+
+description = "HRAP is a versatile tool for simulation of hybrid rocket engines."
+
+[project.urls]
+Homepage = "https://github.com/rnickel1/HRAP_Source"
+
+[project.scripts]
+hrap = "hrap.gui.hrap:main"
+#__main__ = "hrap.examples.nitrous_hybrid_gui:main"
