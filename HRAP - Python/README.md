@@ -1,24 +1,24 @@
 ## User Installation Instructions (Windows/Linux/Mac)
-First install Python https://www.python.org/downloads/.
+First install Python https://www.python.org/downloads/. Version >=3.10 is required.
 
 Then open your terminal and execute:
 
 ```
-python -m pip install --upgrade pip
+python3 -m pip install --upgrade pip
 
-python -m pip install hrap
+python3 -m pip install hrap
 ```
 
 To update hrap when new features become available, simply run
 
 ```
-python -m pip install --upgrade hrap
+python3 -m pip install --upgrade hrap
 ```
 
 To uninstall hrap,
 
 ```
-python -m pip uninstall hrap
+python3 -m pip uninstall hrap
 ```
 
 ## Running HRAP
@@ -50,7 +50,7 @@ After cloning the repo,
 ```
 cd "HRAP_JAX/HRAP - Python/"
 
-pip install -e ./
+pythom3 -m pip install -e ./
 ```
 
 You can now run the GUI as usual. Your local modifications to the hrap code will be reflected.
