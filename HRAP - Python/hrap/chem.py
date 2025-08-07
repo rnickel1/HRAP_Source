@@ -115,7 +115,7 @@ class ThermoSubstance(object):
     data_fields=['providers', 'T_max'],
     meta_fields=['N_curve'])
 @dataclass
-class InternalThermalSubstance(object):
+class InternalThermoSubstance(object):
     N_curve: int
     providers: list[NASA9]
     T_max: jnp.array
@@ -147,6 +147,37 @@ def ReducedEQ0k(b_k0, a_kj_n_J, x, xm):
     result -= jnp.sum(a_kj_n_J*(x.gas_H_D-x.gas_S_D+jnp.log(x.n_j/x.n)+jnp.log(x.P/1.0E5))) # a_kj*n_j*mu_j/(R*T)
     result += jnp.sum(a_kj_n_J) # b_k contribution, a_kj*n_j
     # jax.debug.print('a {a}', a=a_kj_n_J)
+    return result
+
+def ReducedEQ2(x, xm):
+    result = -x.n - x.n*x.Deltaln_n
+    result += jnp.sum((xm.gas_a * x.n_j[:,None]) * x.pi_i[None,:]) # sum across i, a_ij*n_j*pi_i
+    result += jnp.sum(x.n_j * x.Deltaln_n) # (n_j-n)*Deltaln_n
+    result += jnp.sum(x.n_j*x.gas_H_D*x.Deltaln_T) # n_j*H_jstd/(R*T)*Deltaln_T
+    result += jnp.sum(x.n_j) # n_j
+    result -= jnp.sum(x.n_j*(x.gas_H_D-x.gas_S_D+jnp.log(x.n_j/x.n)+jnp.log(x.P/1.0E5))) # n_j*mu_j/(R*T)
+    
+    # for j in range(x.N_gas):
+        # result += np.sum(x.subs_a[j] * x.n_j[j] * x.pi_i[x.subs_I[j]]) # sum across i, a_ij*n_j*pi_i
+        # # TODO: SUS
+        # #result += (iter.n_j[j] - iter.n) * iter.Deltaln_n; # (n_j-n)*Deltaln_n
+        # result += x.n_j[j] * x.Deltaln_n; # (n_j-n)*Deltaln_n
+        # result += x.n_j[j]*x.subs_H_D[j]*x.Deltaln_T; # n_j*H_jstd/(R*T)*Deltaln_T
+        # result += x.n_j[j]; # n_j
+        # result -= x.n_j[j]*(x.subs_H_D[j]-x.subs_S_D[j]+np.log(x.n_j[j]/x.n)+np.log(x.P/1.0E5)); # n_j*mu_j/(R*T)
+
+    return result
+
+def ReducedEQ3(x, xm):
+    Cp_D, H_D_j, S_D_j = x.gas_Cp_D, x.gas_H_D, x.gas_S_D
+    
+    result = -x.h_0/(Rhat*x.T) # h_0/R*T
+    result += jnp.sum((xm.gas_a * (x.n_j*H_D_j)[:,None]) * x.pi_i[None,:]) # sum across i, a_ij*n_j*H_jstd/(R*T)*pi_i
+    result += jnp.sum(x.n_j * H_D_j * x.Deltaln_n) # n_j*H_jstd/(R*T)*Deltaln_n
+    result += jnp.sum(x.n_j * H_D_j) # h/(R*T) contribution, n_j*H_jstd/(R*T)
+    result += jnp.sum(x.n_j*(Cp_D+H_D_j*H_D_j)*x.Deltaln_T) # (n_j*Cp_jstd/R+n_j*H_jstd^2/(R^2*T^2))*Deltaln_T
+    result -= jnp.sum(x.n_j*H_D_j*(H_D_j-S_D_j+jnp.log(x.n_j/x.n)+jnp.log(x.P/1.0E5))) # n_j*H_jstd*mu_j/(R^2*T^2)
+    
     return result
 
 @dataclass
@@ -297,7 +328,7 @@ class ChemSolver:
         N_gas: int
 
         # TODO: sub should only check formula as we use .index here - not anymore
-        gasses: list[ThermoSubstance] # N_subs
+        gasses: list[InternalThermoSubstance] # N_subs
         gas_a: jnp.ndarray # (N_gas, N_elem) amount of the element in each substance
     
     @partial(jax.tree_util.register_dataclass,
@@ -323,6 +354,26 @@ class ChemSolver:
         gas_Cp_D: np.ndarray # Current substance properties
         gas_H_D: np.ndarray
         gas_S_D: np.ndarray
+    
+    @dataclass
+    class Result:
+        T: float # K
+        # Important: these are actual Cp, Cv, gamma; NOT FOZEN
+        #   i.e. they account for changing chemical composiRtion w.r.t. pressure and density, respectively
+        Cp: float
+        Cv: float
+        gamma: float # Specific heat ratio
+        # Frozen specific heat ratio aka isentropic exponent
+        #   used for speed of sound and anything else happening on a much smaller time scale than chemistry
+        gamma_s: float
+        M: float # kg/kmol
+        R: float
+        valid: bool # No errors and has any inputs
+        iters: int
+        composition: dict # Composition by (component formula, molar fraction)
+        
+        def __init__(self, valid):
+            self.valid = valid
     
     def solve(self, Pc, supply, max_iters=200, internal_state=None, reinit=True):
         # Basic input checks
@@ -354,7 +405,8 @@ class ChemSolver:
                     # TODO: temp cutoff too like SSTS?
                     if not sub.condensed and all([elem in present_elements for elem in sub.composition]):
                         # print('RELEVANT GAS', sub.formula, sub.condensed)
-                        xm.gasses.append(sub)
+                        isub = InternalThermoSubstance(len(sub.providers), sub.providers, jnp.array([prov.T_max for prov in sub.providers]))
+                        xm.gasses.append(isub)
             xm.N_gas = len(xm.gasses)
 
             xm.gas_a = np.zeros((xm.N_gas, xm.N_elem))
@@ -391,6 +443,8 @@ class ChemSolver:
                 x.b_i0[present_elements.index(elem)] += amount * n_j # Loop across elements
         x.b_i0_max = np.max(x.b_i0)
         x.b_i0 = jnp.array(x.b_i0)
+        
+        # eval_subs = 
 
         N_dof = xm.N_elem + 2
         iter = 1
@@ -399,18 +453,105 @@ class ChemSolver:
             # for i in range(x.N_sub):
                 # prov = x.subs[i].get_prov(x.T) # Piecewise NASA9 instance
                 # x.gas_Cp_D[i], x.gas_H_D[i], x.gas_S_D[i] = prov.get_Cp_D(x.T), prov.get_H_D(x.T), prov.get_S_D(x.T)
-            x.gas_Cp_D, x.gas_H_D, x.gas_S_D = [np.zeros(xm.N_gas) for i in range(3)]
-            for i in range(xm.N_gas):
-                prov = xm.gasses[i].get_prov(x.T) # Piecewise NASA9 instance
-                x.gas_Cp_D[i], x.gas_H_D[i], x.gas_S_D[i] = prov.get_Cp_D(x.T), prov.get_H_D(x.T), prov.get_S_D(x.T)
+            # x.gas_Cp_D, x.gas_H_D, x.gas_S_D = [np.zeros(xm.N_gas) for i in range(3)]
+            # for i in range(xm.N_gas):
+                # prov = xm.gasses[i].get_prov(x.T) # Piecewise NASA9 instance
+                # x.gas_Cp_D[i], x.gas_H_D[i], x.gas_S_D[i] = prov.get_Cp_D(x.T), prov.get_H_D(x.T), prov.get_S_D(x.T)
+            def prop_body(i, state):
+                T, gasses, gas_Cp_D, gas_H_D, gas_S_D = state
+                
+                gas_Cp_D = gas_Cp_D.at[i].set(gasses[i].get_Cp_D(T))
+                gas_H_D  = gas_H_D .at[i].set(gasses[i].get_H_D(T))
+                gas_S_D  = gas_S_D .at[i].set(gasses[i].get_S_D(T))
+                
+                return T, gasses, gas_Cp_D, gas_H_D, gas_S_D
+            
+            gas_Cp_D, gas_H_D, gas_S_D = [jnp.zeros(xm.N_gas) for i in range(3)]
+            _, _, gas_Cp_D, gas_H_D, gas_S_D = jax.lax.fori_loop(0, len(xm.gasses), (x.T, xm.gasses, gas_Cp_D, gas_H_D, gas_S_D))
+            
             # TODO: could be beneficial to batch arrays inside internal thermo and use vmap here
             # x.gas_H_D = jax.scan()
+            x = InternalState(x.P, x.h_0, x.n, x.T, x.Deltaln_n, x.Deltaln_T, x.b_i0, x.b_i0_max, x.pi_i, x.n_j, x.Deltan_j, gas_Cp_D, gas_H_D, gas_S_D)
             
-            rhs = np.zeros(N_dof)
+            rhs = jnp.zeros(N_dof)
             # print('gas a', xm.gas_a)
-            rhs[:xm.N_elem] = jax.vmap(ReducedEQ0k, (0, 1, None, None))(x.b_i0, xm.gas_a * x.n_j[:,None], x, xm)
-            # rhs[-2] = self.ReducedEQ2(x)
-            # rhs[-1] = self.ReducedEQ3(x)
-            print('func evals', rhs[:xm.N_elem], rhs[-2:])
-            return 0,0
+            rhs.at[:xm.N_elem].set(jax.vmap(ReducedEQ0k, (0, 1, None, None))(x.b_i0, xm.gas_a * x.n_j[:,None], x, xm))
+            rhs.at[-2].set(ReducedEQ2(x, xm))
+            rhs.at[-1].set(ReducedEQ3(x, xm))
+            
+            jac = jnp.zeros((N_dof, N_dof))
+            # Per-element equation partial derivatives of pi_i, sum across k rows and i columns, a_kj*a_ij*n_j
+            jac = jac.at[:xm.N_elem, :xm.N_elem].set(xm.gas_a.T @ (xm.gas_a * x.n_j[:,None]))
+            # Molar balance equation partial derivatives of pi_i
+            jac = jac.at[:xm.N_elem,-2].set(jnp.sum(xm.gas_a * x.n_j[:,None], axis=0)) # a_ij*n_j
+            # Enthalpy conservation equation partial derivatives of pi_i
+            jac = jac.at[:xm.N_elem,-1].set(jnp.sum(xm.gas_a * (x.n_j * x.gas_H_D)[:,None], axis=0)) # a_ij*n_j*H_jstd/(R*T)
+            jac = jac.at[-2,:xm.N_elem].set(jac[:xm.N_elem,-2])
+            jac = jac.at[-1,:xm.N_elem].set(jac[:xm.N_elem,-1])
+
+            # Molar balance equation partial derivative of Deltaln_n
+            jac = jac.at[-2, -2].set(jnp.sum(x.n_j) - x.n)
+            # Molar balance equation partial derivative of Deltaln_T
+            jac = jac.at[-1, -2].set(jnp.sum(x.n_j*x.gas_H_D)) # n_j*H_jstd/(R*T)
+            
+            # Enthalpy conservation equation partial derivative of Deltaln_n
+            jac = jac.at[-2, -1].set(jnp.sum(x.n_j*x.gas_H_D)) # n_j*H_jstd/(R*T)
+            # Enthalpy conservation equation partial derivative of Deltaln_T
+            jac = jac.at[-1, -1].set(jnp.sum(x.n_j*(x.gas_Cp_D+x.gas_H_D**2))) # (n_j*Cp_jstd/R+n_j*H_jstd^2/(R^2*T^2))
+            
+            upd = jnp.linalg.solve(jac, rhs)
+            pi_i = x.pi_i - upd[:xm.N_elem]
+            Deltaln_n = x.Deltaln_n - upd[-2]
+            Deltaln_T = x.Deltaln_T - upd[-1]
+            
+            # print('func evals', rhs[:xm.N_elem], rhs[-2:])
+            # print('jac', jac)
+            # print('upd', upd)
+            # return 0,0
+            
+            # Empirical lambda formulas suggested by NASA
+            # for j in range(x.N_gas):
+            Deltan_j = Deltaln_n + x.gas_H_D*Deltaln_T - \
+                (x.gas_H_D-x.gas_S_D+jnp.log(x.n_j/x.n)+jnp.log(x.P/1.0E5))
+            Deltan_j += jnp.sum(xm.gas_a * pi_i[None,:], axis=1) # sum across i, a_ij*pi_i
+            
+            lambda1 = 5.0*jnp.maximum(jnp.abs(Deltaln_T), jnp.abs(Deltaln_n))
+            lambda1 = jnp.maximum(lambda1, jnp.max(jnp.abs( Deltan_j)))
+            
+            ln_nj_n = jnp.log(x.n_j/x.n)
+            v = jnp.abs((-ln_nj_n-9.2103404) / (Deltan_j-Deltaln_n))
+            # lambda2 is minimum out of gasses that satisfy the conditions
+            lambda2 = jnp.min(jnp.select([(ln_nj_n <= -18.420681) & (Deltan_j >= 0.0)], [v], float('inf')))
+            
+            # Limit corrections to prevent diverging solutions due to large jumps
+            lambda1 = 2.0 / lambda1
+            lam = jnp.minimum(1.0, jnp.minimum(lambda1, lambda2))
+            n_j = x.n_j * jnp.exp(lam * Deltan_j)
+            n = x.n * jnp.exp(lam * Deltaln_n)
+            T = x.T * jnp.exp(lam * Deltaln_T)
+            
+            x = InternalState(x.P, x.h_0, n, T, Deltaln_n, Deltaln_T, x.b_i0, x.b_i0_max, pi_i, n_j, Deltan_j, x.gas_Cp_D, x.gas_H_D, x.gas_S_D)
+            
+            # Test for convergence
+            convergedTemp = jnp.abs(x.Deltaln_T) <= 1.0E-4
+            sumN_j = jnp.sum(x.n_j)
+            convergeGas = (jnp.sum(x.n_j*jnp.abs(x.Deltan_j)) / sumN_j) <= 0.5E-5
+            convergeTotal = (x.n * jnp.abs(x.Deltaln_n) / sumN_j) <= 0.5E-5
+            sum_aij_nj = jnp.sum(xm.gas_a[i] * x.n_j[:,None], axis=0)
+            massBalanceConvergence = jnp.all(jnp.abs(x.b_i0 - sum_aij_nj) > x.b_i0_max*1.0E-6)
+            converged = convergedTemp & convergeGas & convergeTotal & massBalanceConvergence
+            # TODO: Also do TRACE != 0 convergence test for pi_i
+
+            iter += 1
         
+        if iter == max_iters + 1: iter = max_iters # If terminated due to max_iters, will be 1 too high
+
+        result = self.Result(True)
+        result.iters = iter
+        result.T = x.T
+        result.M = 1/x.n
+        result.R = Rhat / result.M
+        
+        print(f'result (took {iter} iters): T={result.T}, M={result.M}')
+        
+        return result, (x, xm)

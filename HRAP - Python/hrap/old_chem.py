@@ -303,7 +303,6 @@ class ChemSolver:
     def ReducedEQ3(self, x):
         result = -x.h_0/(Rhat*x.T) # h_0/R*T
         
-        # TODO: could get rid of several loops by computing H, S, C_p ahead of time
         for j in range(x.N_gas):
             Cp_D, H_D_j, S_D_j = x.subs_Cp_D[j], x.subs_H_D[j], x.subs_S_D[j]
             # print(x.pi_i.shape, len(x.subs_I))
@@ -484,8 +483,8 @@ class ChemSolver:
             rhs[x.N_elem + x.N_cond]     = self.ReducedEQ2(x)
             rhs[x.N_elem + x.N_cond + 1] = self.ReducedEQ3(x)
             
-            print('func evals', rhs[:x.N_elem], rhs[-2:])
-            return 0,0
+            # print('func evals', rhs[:x.N_elem], rhs[-2:])
+            # return 0,0
             
             jac = np.zeros((N_dof, N_dof))
             for k in range(x.N_elem):
@@ -535,6 +534,11 @@ class ChemSolver:
             x.Deltaln_n -= upd[N_dof - 2]
             x.Deltaln_T -= upd[N_dof - 1]
             # print('upd', upd)
+            
+            # print('func evals', rhs[:x.N_elem], rhs[-2:])
+            # print('jac', jac)
+            # print('upd', upd)
+            # return 0,0
 
             # Empirical lambda formulas suggested by NASA
             lambda1 = 5.0*np.max([np.abs(x.Deltaln_T), np.abs(x.Deltaln_n)])
