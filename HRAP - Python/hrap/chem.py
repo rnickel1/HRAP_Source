@@ -356,13 +356,14 @@ class ChemSolver:
                 print('Error: invalid chem info type', type(chem_info))
 
     @partial(jax.tree_util.register_dataclass,
-        data_fields=['present_elements', 'N_elem', 'N_gas', 'gas_T_bounds', 'gas_coeffs', 'gas_a'],
+        data_fields=['present_elements', 'N_elem', 'N_gas', 'max_iters', 'gas_T_bounds', 'gas_coeffs', 'gas_a'],
         meta_fields=[])
     @dataclass
     class InternalMeta(object):
         present_elements: list[str]
         N_elem: int
         N_gas: int
+        max_iters: int
 
         # TODO: sub should only check formula as we use .index here - not anymore
         # gasses: list[InternalThermoSubstance] # N_subs
@@ -434,7 +435,7 @@ class ChemSolver:
                 print('Warning: provided internal state is not usable due to differing elemental composition, rebuilding...')
                 internal_state = None
         if internal_state == None:
-            x, xm = self.InternalState(*([None]*14)), self.InternalMeta(*([None]*6)) # Init with None as we will populate
+            x, xm = self.InternalState(*([None]*14)), self.InternalMeta(*([None]*7)) # Init with None as we will populate
             xm.N_elem = len(present_elements)
             # x.gas_prod_I, x.gas_prod_a, x.cond_prod_I, x.cond_prod_a = [[[] for i in range(x.N_elem)] for i in range(4)]
             
@@ -509,8 +510,14 @@ class ChemSolver:
         # eval_subs = 
 
         N_dof = xm.N_elem + 2
-        iter = 1
-        while iter <= max_iters:
+        # iter = 1
+        # while iter <= max_iters:
+        def loop_cond(loop_val):
+            i, is_converged, x, xm = loop_val
+            return i <= xm.max_iters and not is_converged
+        # TODO: jit to donate? or handled by while already?
+        def loop_body(loop_val):
+            i, is_converged, x, xm = loop_val
             gas_Cp_D, gas_H_D, gas_S_D = [get_my_D(xm.gas_T_bounds, xm.gas_coeffs, x.T) for get_my_D in [get_Cp_D, get_H_D, get_S_D]]
             
             # TODO: could be beneficial to batch arrays inside internal thermo and use vmap here
@@ -582,10 +589,11 @@ class ChemSolver:
             convergeTotal = (x.n * jnp.abs(x.Deltaln_n) / sumN_j) <= 0.5E-5
             sum_aij_nj = jnp.sum(xm.gas_a[i] * x.n_j[:,None], axis=0)
             massBalanceConvergence = jnp.all(jnp.abs(x.b_i0 - sum_aij_nj) > x.b_i0_max*1.0E-6)
-            converged = convergedTemp & convergeGas & convergeTotal & massBalanceConvergence
+            is_converged = convergedTemp & convergeGas & convergeTotal & massBalanceConvergence
             # TODO: Also do TRACE != 0 convergence test for pi_i
 
-            iter += 1
+            return i+1, is_converged, x, xm
+        i, is_converged, x, xm = jax.lax.while_loop(loop_cond, loop_body, (1, False, x, xm))
         
         if iter == max_iters + 1: iter = max_iters # If terminated due to max_iters, will be 1 too high
 
