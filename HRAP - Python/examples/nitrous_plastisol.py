@@ -1,4 +1,4 @@
-# Purpose: Demonstrate API usage for a typical hybrid, case is similar to GUI defaults
+# Purpose: Demonstrate API usage and validate for a typical hybrid, case is similar to GUI defaults
 # Authors: Thomas Scott
 
 import scipy
@@ -10,11 +10,11 @@ import matplotlib.pyplot as plt
 
 import hrap.core as core
 import hrap.chem as chem
+import hrap.fluid as fluid
 from hrap.tank    import *
 from hrap.grain   import *
 from hrap.chamber import *
 from hrap.nozzle  import *
-from hrap.sat_nos import *
 from hrap.units   import _in, _ft, _lbf, _atm
 
 
@@ -43,8 +43,8 @@ else:
         h0 = -265357.55, # J/mol
     )
 
-    comb = chem.ChemSolver(['./ssts_thermochem.txt', plastisol])
     print('Building combustion table')
+    comb = chem.ChemSolver(['./ssts_thermochem.txt', plastisol])
     # TODO: separate 3-table for vapor like ssts
     chem_OF, chem_Pc = np.linspace(1.0, 10.0, 10), np.linspace(10*_atm, 50*_atm, 10)
     ox, fu = 'N2O(L),298.15K', 'Plastisol-362'
@@ -58,7 +58,7 @@ else:
 
 # Initialization
 tnk = make_sat_tank(
-    get_sat_nos_props,
+    fluid.get_sat_nos_props,
     V = (np.pi/4 * 4.75**2 * _in**2) * (7.0 * _ft),
     inj_CdA= 0.22 * (np.pi/4 * 0.5**2 * _in**2),
     m_ox=12.6, # TODO: init limit

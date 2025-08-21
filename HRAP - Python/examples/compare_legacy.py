@@ -1,4 +1,4 @@
-# Purpose: Provide comparisons between generalized and an empirical model for nitrous in addition to a comparison between fixed and shifting O/F
+# Purpose: Provide cross validation between legacy capabilities and current streamlined models
 # Authors: Thomas A. Scott
 
 import scipy
@@ -9,12 +9,11 @@ from importlib.resources import files as imp_files
 import matplotlib.pyplot as plt
 
 import hrap.core as core
-import hrap.sat_coolprop as sat_coolprop
+import hrap.fluid as fluid
 from hrap.tank    import *
 from hrap.grain   import *
 from hrap.chamber import *
 from hrap.nozzle  import *
-from hrap.sat_nos import *
 from hrap.units   import _in, _ft, _lbf, _atm
 
 
@@ -36,14 +35,14 @@ if chem_k.size == 1: chem_k = np.full_like(chem_T, chem_k.item())
 
 # Initialization
 emp_tnk = make_sat_tank(
-    get_sat_nos_props,
+    fluid.get_sat_nos_props,
     V = (np.pi/4 * 4.75**2 * _in**2) * (7.0 * _ft),
     inj_CdA= 0.22 * (np.pi/4 * 0.5**2 * _in**2),
     m_ox=12.6, # TODO: init limit
     T = 294,
 )
 cp_tnk = make_sat_tank(
-    sat_coolprop.bake_sat_props('NitrousOxide', np.linspace(183.0, 309.0, 20)),
+    fluid.bake_sat_coolprop('NitrousOxide', np.linspace(183.0, 309.0, 20)),
     V = (np.pi/4 * 4.75**2 * _in**2) * (7.0 * _ft),
     inj_CdA= 0.22 * (np.pi/4 * 0.5**2 * _in**2),
     m_ox=12.6, # TODO: init limit

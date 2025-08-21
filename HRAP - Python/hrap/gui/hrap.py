@@ -19,7 +19,7 @@ from hrap.tank    import *
 from hrap.grain   import *
 from hrap.chamber import *
 from hrap.nozzle  import *
-from hrap.sat_nos import *
+from hrap.fluids  import *
 from hrap.units   import _in, _ft
 
 from hrap.gui.themes import create_babber_theme
