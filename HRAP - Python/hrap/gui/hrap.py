@@ -15,18 +15,17 @@ from jax.scipy.interpolate import RegularGridInterpolator
 
 import hrap.core as core
 import hrap.units as units
+import hrap.fluid as fluid
 from hrap.tank    import *
 from hrap.grain   import *
 from hrap.chamber import *
 from hrap.nozzle  import *
-from hrap.fluids  import *
 from hrap.units   import _in, _ft
 
 from hrap.gui.themes import create_babber_theme
 from dearpygui_ext.themes import create_theme_imgui_light, create_theme_imgui_dark
 
-from hrap.sat_nos import get_sat_nos_props
-get_sat_props = get_sat_nos_props
+get_sat_props = fluid.bake_sat_coolprop('NitrousOxide', np.linspace(183.0, 309.0, 20))
 
 hrap_version = version('hrap')
 
@@ -198,7 +197,7 @@ def load_preset_chem(name):
 def setup_motor(tnk_inj_vap_model, tnk_inj_liq_model, chem_interp_k, chem_interp_M, chem_interp_T):
     # Initialization
     tnk = make_sat_tank(
-        get_sat_nos_props,
+        get_sat_props,
         V = (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
         inj_CdA= 0.5 * (np.pi/4 * 0.5**2 * _in**2),
         m_ox=1,#14.0, # TODO: init limit

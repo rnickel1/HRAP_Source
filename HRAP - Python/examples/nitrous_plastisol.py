@@ -58,7 +58,7 @@ else:
 
 # Initialization
 tnk = make_sat_tank(
-    fluid.get_sat_nos_props,
+    fluid.bake_sat_coolprop('NitrousOxide', np.linspace(183.0, 309.0, 20)),
     V = (np.pi/4 * 4.75**2 * _in**2) * (7.0 * _ft),
     inj_CdA= 0.22 * (np.pi/4 * 0.5**2 * _in**2),
     m_ox=12.6, # TODO: init limit
