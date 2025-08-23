@@ -31,7 +31,7 @@ plastisol = chem.make_basic_reactant(
     T0 = 298.15, # K
     h0 = -2.6535755e7, # J/kmol
 )
-comb = chem.ChemSolver([hrap_root/'ssts_thermochem.txt', plastisol])
+comb = chem.ChemSolver([hrap_root/'thermo.dat', plastisol])
 chem_Pc, chem_OF = np.linspace(10*_atm, 50*_atm, 10), np.linspace(1.0, 10.0, 20)
 chem_k, chem_M, chem_T = [np.zeros((chem_Pc.size, chem_OF.size)) for i in range(3)]
 ox, fu_1, fu_2 = 'N2O(L),298.15K', 'Plastisol-362', 'AL(cr)'
