@@ -1,5 +1,7 @@
-# Purpose: Demonstrate API for arbitrary saturated fluids with a LOX hybrid example
+# Purpose: Demonstrate API for arbitrary saturated fluids and non-circular ports with a LOX plastisol hybrid star grain example
 # Authors: Thomas Scott
+
+# https://scikit-image.org/docs/0.23.x/auto_examples/edges/plot_contours.html
 
 import scipy
 import numpy as np
@@ -10,7 +12,7 @@ import matplotlib.pyplot as plt
 
 import hrap.core as core
 import hrap.chem as chem
-import hrap.sat_coolprop as sat_coolprop
+import hrap.fluid as fluid
 from hrap.tank    import *
 from hrap.grain   import *
 from hrap.chamber import *
@@ -25,16 +27,31 @@ jax.config.update("jax_enable_x64", True)
 
 hrap_root = Path(imp_files('hrap'))
 
-print('Loading chemistry table...')
-chem = scipy.io.loadmat(hrap_root/'resources'/'propellant_configs'/'Metalized_Plastisol.mat')
-chem = chem['s'][0][0]
-chem_OF = chem['prop_OF'].ravel()
-chem_Pc = chem['prop_Pc'].ravel()
-chem_k, chem_M, chem_T = chem['prop_k'], chem['prop_M'], chem['prop_T']
-if chem_k.size == 1: chem_k = np.full_like(chem_T, chem_k.item())
+print('Building combustion chemistry table...')
+plastisol = chem.make_basic_reactant(
+    formula = 'Plastisol-362',
+    composition = { 'C': 7.200, 'H': 10.82, 'O': 1.14, 'Cl': 0.669 },
+    M = 140.86, # kg/kmol
+    T0 = 298.15, # K
+    h0 = -265357.55, # J/mol
+)
+comb = chem.ChemSolver(['./ssts_thermochem.txt', plastisol])
+chem_Pc, chem_OF = np.linspace(10*_atm, 50*_atm, 10), np.linspace(1.0, 10.0, 20)
+chem_k, chem_M, chem_T = [np.zeros((chem_Pc.size, chem_OF.size)) for i in range(3)]
+ox, fu = 'O2(L)', 'Plastisol-362'
+# TODO: potentially confusing to user, don't allow specification
+# Chemistry of condensed inputs is only available at a single temperature
+T_ox, T_fu = 90.17, 298
+internal_state = None
+for j, OF in enumerate(chem_OF):
+    for i, Pc in enumerate(chem_Pc):
+        # print('OF={OF}, Pc={Pc}atm'.format(OF=OF, Pc=Pc/_atm))
+        o = OF / (1 + OF) # o/f = OF, o+f=1 => o=OF/(1 + OF)
+        flame, internal_state = comb.solve(Pc, {ox: (o, T_ox, 1*_atm), fu: (1-o, T_fu, 1*_atm)}, max_iters=150, internal_state=internal_state)
+        chem_k[i,j], chem_M[i,j], chem_T[i,j] = flame.gamma, flame.M, flame.T
 
-print('Initializing lox saturation table...')
-get_sat_lox_props = sat_coolprop.bake_sat_props('Oxygen', np.linspace(75, 150, 20))
+print('Baking LOX saturated property curves...')
+get_sat_lox_props = fluid.bake_sat_coolprop('Oxygen', np.linspace(75, 150, 20))
 
 
 

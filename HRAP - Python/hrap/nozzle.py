@@ -20,22 +20,16 @@ def M_solve(k, ER):
             ER
         
         return error
-    
     get_derror_dMe = jax.grad(get_error)
     
-    def body(val):
+    def newton_step(val):
         _, Me, k, ER, i = val
-        
         error = get_error(Me, k, ER)
         Me -= error / get_derror_dMe(Me, k, ER)
-        # error = get_error(Me, k, ER)
-
         return (error, Me, k, ER, i+1)
-
-    res = jax.lax.while_loop(lambda val: (jnp.abs(val[0]) > 1E-8) & (val[4]<10), body, (1.0, 3.0, k, ER, 0))
-    # jax.debug.print('final error {a}, Me={c}, iter={b}', a=get_error(res[1], k, ER), c=res[1], b=res[4])
+    result = jax.lax.while_loop(lambda val: (jnp.abs(val[0]) > 1E-8) & (val[4]<10), newton_step, (1.0, 3.0, k, ER, 0))
     
-    return res[1]
+    return result[1]
 
 def d_cd_nozzle(s, x, xmap):
     Pc     = x[xmap['cmbr_P']]          # Chamber pressure
@@ -52,6 +46,7 @@ def d_cd_nozzle(s, x, xmap):
     # Exit pressure
     Pe = Pc*(1+0.5*(k-1)*Me**2)**(-k/(k-1))
     
+    # TODO: Speed of sound is involved here and specific heat ratio is not correct to use, rather isentropic exponent, but they barely differ so perhaps not worth it
     #
     Cf = jnp.sqrt(((2*k**2)/(k-1))*(2/(k+1))**((k+1)/ \
         (k-1))*(1-(Pe/Pc)**((k-1)/k)))+ \

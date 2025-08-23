@@ -1,4 +1,4 @@
-# Purpose: Wrapper for coolprop to provide compilable property tables
+# Purpose: Provide fluid models
 # Authors: Thomas A. Scott
 
 import numpy as np
@@ -6,7 +6,8 @@ import jax.numpy as jnp
 import CoolProp.CoolProp as CP
 import interpax
 
-def bake_sat_props(fluid, T_eval):
+# Wrapper for coolprop to provide JAX compilable property tables
+def bake_sat_coolprop(fluid, T_eval):
     _Pv, _rho_l, _rho_v, _Hv, _Cp, _Z = [np.zeros_like(T_eval) for i in range(6)]
     for i, T in enumerate(T_eval):
         _Pv   [i] = CP.PropsSI('P', 'T', T, 'Q', 0, fluid)

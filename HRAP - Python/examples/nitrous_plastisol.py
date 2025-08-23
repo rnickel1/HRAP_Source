@@ -1,5 +1,5 @@
-# Purpose: Demonstrate API usage for a typical hybrid, case is similar to GUI defaults
-# Authors: Thomas Scott
+# Purpose: Demonstrate API usage and validate for a typical hybrid, case is similar to GUI defaults
+# Authors: Thomas A. Scott
 
 import scipy
 import numpy as np
@@ -10,58 +10,51 @@ import matplotlib.pyplot as plt
 
 import hrap.core as core
 import hrap.chem as chem
+import hrap.fluid as fluid
 from hrap.tank    import *
 from hrap.grain   import *
 from hrap.chamber import *
 from hrap.nozzle  import *
-from hrap.sat_nos import *
 from hrap.units   import _in, _ft, _lbf, _atm
 
-
 jax.config.update("jax_enable_x64", True)
-# np.random.seed(42)
 hrap_root = Path(imp_files('hrap'))
+file_prefix = 'nitrous_plastisol'
 
 
 
-print('Initializing chemistry...')
-use_prebuilt_chem = True
-# use_prebuilt_chem = False
-if use_prebuilt_chem:
-    chem = scipy.io.loadmat(hrap_root/'resources'/'propellant_configs'/'Metalized_Plastisol.mat')
-    chem = chem['s'][0][0]
-    chem_OF = chem['prop_OF'].ravel()
-    chem_Pc = chem['prop_Pc'].ravel()
-    chem_k, chem_M, chem_T = chem['prop_k'], chem['prop_M'], chem['prop_T']
-    if chem_k.size == 1: chem_k = np.full_like(chem_T, chem_k.item())
-else:
-    plastisol = chem.make_basic_reactant(
-        formula = 'Plastisol-362',
-        composition = { 'C': 7.200, 'H': 10.82, 'O': 1.14, 'Cl': 0.669 },
-        M = 140.86, # kg/kmol
-        T0 = 298.15, # K
-        h0 = -265357.55, # J/mol
-    )
+print('Building combustion chemistry table...')
+plastisol = chem.make_basic_reactant(
+    formula = 'Plastisol-362',
+    composition = { 'C': 7.200, 'H': 10.82, 'O': 1.14, 'Cl': 0.669 },
+    M = 140.86, # kg/kmol
+    T0 = 298.15, # K
+    h0 = -2.6535755e7, # J/kmol
+)
+comb = chem.ChemSolver([hrap_root/'ssts_thermochem.txt', plastisol])
+chem_Pc, chem_OF = np.linspace(10*_atm, 50*_atm, 10), np.linspace(1.0, 10.0, 20)
+chem_k, chem_M, chem_T = [np.zeros((chem_Pc.size, chem_OF.size)) for i in range(3)]
+ox, fu_1, fu_2 = 'N2O(L),298.15K', 'Plastisol-362', 'AL(cr)'
+mfrac_al = 0.2
+internal_state = None
+for j, OF in enumerate(chem_OF):
+    for i, Pc in enumerate(chem_Pc):
+        # print('OF={OF}, Pc={Pc}atm'.format(OF=OF, Pc=Pc/_atm))
+        o = OF / (1 + OF) # o/f = OF, o+f=1 => o=OF/(1 + OF)
+        flame, internal_state = comb.solve(Pc, {ox: o, fu_1: (1-mfrac_al)*(1-o), fu_2: mfrac_al*(1-o)}, max_iters=150, internal_state=internal_state)
+        chem_k[i,j], chem_M[i,j], chem_T[i,j] = flame.gamma, flame.M, flame.T
 
-    comb = chem.ChemSolver(['./ssts_thermochem.txt', plastisol])
-    print('Building combustion table')
-    # TODO: separate 3-table for vapor like ssts
-    chem_OF, chem_Pc = np.linspace(1.0, 10.0, 10), np.linspace(10*_atm, 50*_atm, 10)
-    ox, fu = 'N2O(L),298.15K', 'Plastisol-362'
-    for OF in chem_OF:
-        for Pc in chem_Pc:
-            o = OF / (1 + OF) # o/f = OF, o+f=1 => o=OF/(1 + OF)
-            res = comb.solve(Pc, {ox: (o, 298, 1*_atm), fu: (1-o, 298, 1*_atm)})
-            print('OF={OF}, Pc={Pc}atm'.format(OF=OF, Pc=Pc/_atm))
+print('Baking NOS saturated property curves...')
+get_sat_nos_props = fluid.bake_sat_coolprop('NitrousOxide', np.linspace(183.0, 309.0, 20))
 
 
 
-# Initialization
+print('Initializing engine...')
 tnk = make_sat_tank(
     get_sat_nos_props,
     V = (np.pi/4 * 4.75**2 * _in**2) * (7.0 * _ft),
-    inj_CdA= 0.22 * (np.pi/4 * 0.5**2 * _in**2),
-    m_ox=12.6, # TODO: init limit
+    inj_CdA = 0.22 * (np.pi/4 * 0.5**2 * _in**2),
+    m_ox = 12.6, # TODO: init limit
     T = 294,
 )
 
@@ -76,13 +69,13 @@ grn = make_constOF_grain(
     rho = 1117.0,
 )
 
-prepost_ID = 4.25*_in                              # Inner diameter of pre and post combustion chambers (m)
-prepost_V  = (3.5+1.7)*_in * np.pi/4*prepost_ID**2 # Empty volume of pre and post combustion chambers (m^3)
-rings_V    = 3 * (1/8*_in) * np.pi*(2.5/2 * _in)**2  # Empty volume of phenolic rings (m^3)
-fuel_V     = (30.0 * _in) * np.pi*(4.5/2 * _in)**2   # Empty volume of grain footprint (m^3)
+prepost_ID = 4.25*_in                               # Inner diameter of pre and post combustion chambers (m)
+prepost_V  = (3.5+1.7)*_in * np.pi/4*prepost_ID**2  # Empty volume of pre and post combustion chambers (m^3)
+rings_V    = 3 * (1/8*_in) * np.pi*(2.5/2 * _in)**2 # Empty volume of phenolic rings (m^3)
+fuel_V     = (30.0 * _in) * np.pi*(4.5/2 * _in)**2  # Empty volume of grain footprint (m^3)
 cmbr = make_chamber(
-    # V0 =  prepost_V + rings_V + fuel_V,            # Volume of chamber w/o grain (m^3)
-    V0 = 0.0, # Sim can be a bit unstable with this and incompressible injetor
+    V0 = prepost_V + rings_V + fuel_V, # Volume of chamber w/o grain (m^3)
+    # V0 = 0.0, # Note: sim can be a bit unstable with this and incompressible injetor
     cstar_eff = 1.0,#0.95
 )
 
@@ -116,7 +109,6 @@ fire_engine = core.make_integrator(
 
 # Integrate the engine state
 T = 12.0
-# T = 10E-2
 print('Running...')
 import time
 t1 = time.time()
@@ -131,11 +123,6 @@ print('done, first run was {a:.2f}s, second run was {b:.2f}s'.format(a=t2-t1, b=
 # Unpack the dynamic engine state
 N_t = xstack.shape[0]
 tnk, grn, cmbr, noz = core.unpack_engine(s, xstack, method)
-# print('tnk', tnk.keys())
-# print('grn', grn.keys())
-# print('cmbr', cmbr.keys())
-# print('noz', noz.keys())
-# print()
 # print('Post-run arrays:')
 # for name, obj in (('tnk', tnk), ('grn', grn), ('cmbr', cmbr), ('noz', noz)):
 #     print(name+':')
@@ -148,7 +135,6 @@ results_path = Path('./results')
 results_path.mkdir(parents=True, exist_ok=True)
 
 OD, L = 5*_in, 10*_ft
-file_prefix = 'nitrous_plastisol'
 core.export_rse(
     results_path/(file_prefix+'.rse'),
     t, noz['thrust'].ravel(), noz['mdot'].ravel(), t*0, t*0,
@@ -224,14 +210,13 @@ axs[8].plot(np.linspace(0.0, T, N_t), cmbr['V0'] - grn['V'], label='Empty cmbr V
 # Pc*(mdot_g/m_g - dV/V)
 axs[8].legend()
 
-
-# Write thrust validation, big hybrid 7-26-23
+# Plot thrust validation, big hybrid 7-26-23
 daq = np.genfromtxt(hrap_root/'resources'/'validation'/'hybrid_fire_7_26_23.csv', delimiter=',', names=True, dtype=float, encoding='utf-8', deletechars='')
 axs[0].plot(daq['time'], daq['thrust']*_lbf, label='daq')
 axs[0].legend()
 # axs[0].plot()
 
-# Plot nozzle flow rate
+
 
 # Save plot
 fig.tight_layout()

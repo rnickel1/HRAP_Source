@@ -23,11 +23,9 @@ def liq_blowdow(mdot_ox, x, xmap, ox, dP_dT, drho_v__dT, drho_l__dT):
     
     # Find evap cooling rate, using total oxidizer mass since we consider thermal equilibrium
     A = (m_liq*drho_l__dT/(rho_l**2) + m_vap*drho_v__dT/(rho_v**2)) / (1/rho_v-1/rho_l)
-    B = -mdot_ox/(rho_l/rho_v-1) # TODO: sign?
+    B = -mdot_ox/(rho_l/rho_v-1)
     C = -ox['Hv'] / ((m_liq+m_vap)*ox['Cp'])
     Tdot = B*C / (1-A*C)
-    # jax.debug.print("TANK Debug {x} {y} {z} {w} {a} {b}", x=mdot_ox, y=Tdot, z=m_liq, w=m_vap, a=ox['Hv'], b=ox['Cp'])
-    # jax.debug.print("TANK Debug {x} {y} {c} {d} {e}", x=mdot_ox, y=Tdot, c=drho_v__dT, d=drho_l__dT, e=dP_dT)
     mdot_evap = Tdot*A+B
     
     Tdot, Pdot = cond(
@@ -46,7 +44,7 @@ def sat_vap_blowdown(T, m_ox, mdot_ox, ox, dP_dT, get_sat_props):
     delta = 1E-7 # FD step
     m_2__m_1 = (m_ox + mdot_ox*delta) / m_ox
     
-    # TODO: precompute high order curve-fit using complex step results
+    # TODO: precompute high order curve-fit using complex step results?
     def Z_body(args):
         eps, Z_i, Z_1, T_i, T_1, m_2__m_1 = args
         
@@ -56,7 +54,6 @@ def sat_vap_blowdown(T, m_ox, mdot_ox, ox, dP_dT, get_sat_props):
         # Get error and force convergence
         eps = jnp.abs(Z_i - Z_new)
         Z_new = (Z_i + Z_new) / 2
-        # jax.debug.print("TANKi Debug {x} {y} {Z}", x=Z_new, y=Z_i, Z=eps)
         
         return eps, Z_new, Z_1, T_new, T_1, m_2__m_1
     
