@@ -41,26 +41,22 @@
 import numpy as np
 import jax
 import jax.numpy as jnp
-
 from functools import partial
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Dict
-
-
+from hrap.units import _atm
 
 Rhat = 8314 # J/(K*kmol), universal gas constant
 
-# @partial(jax.tree_util.register_dataclass,
-    # data_fields=['T_min', 'T_max', 'dho', 'coeffs'],
-    # meta_fields=[])
+
+
 @dataclass
 class NASA9(object):
     T_min: float # K
     T_max: float # K
-    # TODO: check consistent with curve
-    dho: float # Formation enthalpy
-    coeffs: jnp.array #list[float] # 9 coefficients
+    DeltaHForm: float # Formation enthalpy at substance-specific reference temperature, only valid enthalpy value for condensed species
+    coeffs: np.array # 9 coefficients
     
     # Although the property tables are nearly duplicated further below for JAX, this is kept for convenience during initialization
     # Nondimensionalized specific heat, Cp/Rhat
@@ -81,9 +77,6 @@ class NASA9(object):
                 self.coeffs[3]*T         + self.coeffs[4]*T*T/2.0 + self.coeffs[5]*T**3/3.0  + \
                 self.coeffs[6]*T**4/4.0  + self.coeffs[8]
 
-# @partial(jax.tree_util.register_dataclass,
-#     data_fields=[],
-#     meta_fields=[])
 @dataclass
 # High-level thermodynamic information used during initialization
 class ThermoSubstance(object):
@@ -120,9 +113,9 @@ def make_basic_reactant(formula: str, composition: dict, M: float, T0: float, h0
     """
     kg/kmol
     K
-    J/mol
+    J/kmol, note that chem table and other software is often J/mol
     """
-    return ThermoSubstance(formula, '', condensed, False, { k.upper(): v for k, v in composition.items() }, M, [NASA9(0.9*T0, 1.1*T0, h0, [0.0]*2+[h0/Rhat/T0]+[0.0]*5)], 0.9*T0, 1.1*T0)
+    return ThermoSubstance(formula, '', condensed, False, { k.upper(): v for k, v in composition.items() }, M, [NASA9(T0, T0, h0, [0.0]*2+[h0/Rhat/T0]+[0.0]*5)], T0, T0)
 
 def ReducedEQ0k(b_k0, a_kj_n_J, x, xm):
     # a_kj_n_J is each a_kj*n_j, j in 1...N_gas
@@ -130,7 +123,7 @@ def ReducedEQ0k(b_k0, a_kj_n_J, x, xm):
     result += jnp.sum((a_kj_n_J[:,None] * xm.gas_a) * x.pi_i[None,:]) # Sum across all elements in the substance, a_kj*a_ij*n_j*pi_i, arrays broadcast along each gas
     result += jnp.sum(a_kj_n_J*x.Deltaln_n) # a_kj*n_j*Deltaln_n
     result += jnp.sum(a_kj_n_J*x.gas_H_D*x.Deltaln_T) # a_kj*n_j*H_j/(R*T)*Deltaln_T
-    result -= jnp.sum(a_kj_n_J*(x.gas_H_D-x.gas_S_D+jnp.log(x.n_j/x.n)+jnp.log(x.P/1.0E5))) # a_kj*n_j*mu_j/(R*T)
+    result -= jnp.sum(a_kj_n_J*(x.gas_H_D-x.gas_S_D+jnp.log(x.n_j/x.n)+jnp.log(x.P/1e5))) # a_kj*n_j*mu_j/(R*T)
     result += jnp.sum(a_kj_n_J) # b_k contribution, a_kj*n_j
     return result
 
@@ -261,7 +254,7 @@ def solver_body(loop_val):
     
     # Empirical lambda formulas suggested by NASA
     Deltan_j = Deltaln_n + x.gas_H_D*Deltaln_T - \
-        (x.gas_H_D-x.gas_S_D+jnp.log(x.n_j/x.n)+jnp.log(x.P/1.0E5))
+        (x.gas_H_D-x.gas_S_D+jnp.log(x.n_j/x.n)+jnp.log(x.P/1e5))
     Deltan_j += jnp.sum(xm.gas_a * pi_i[None,:], axis=1) # sum across i, a_ij*pi_i
     
     lambda1 = 5.0*jnp.maximum(jnp.abs(Deltaln_T), jnp.abs(Deltaln_n))
@@ -282,12 +275,12 @@ def solver_body(loop_val):
     x = InternalState(x.P, x.h_0, n, T, Deltaln_n, Deltaln_T, x.b_i0, x.b_i0_max, pi_i, n_j, Deltan_j, x.gas_Cp_D, x.gas_H_D, x.gas_S_D)
     
     # Test for convergence
-    convergedTemp = jnp.abs(x.Deltaln_T) <= 1.0E-4
+    convergedTemp = jnp.abs(x.Deltaln_T) <= 1e-4
     sumN_j = jnp.sum(x.n_j)
-    convergeGas = (jnp.sum(x.n_j*jnp.abs(x.Deltan_j)) / sumN_j) <= 0.5E-5
-    convergeTotal = (x.n * jnp.abs(x.Deltaln_n) / sumN_j) <= 0.5E-5
+    convergeGas = (jnp.sum(x.n_j*jnp.abs(x.Deltan_j)) / sumN_j) <= 5e-6
+    convergeTotal = (x.n * jnp.abs(x.Deltaln_n) / sumN_j) <= 5e-6
     sum_aij_nj = jnp.sum(xm.gas_a[i] * x.n_j[:,None], axis=0)
-    massBalanceConvergence = jnp.all(jnp.abs(x.b_i0 - sum_aij_nj) > x.b_i0_max*1.0E-6)
+    massBalanceConvergence = jnp.all(jnp.abs(x.b_i0 - sum_aij_nj) > x.b_i0_max*1e-6)
     is_converged = convergedTemp & convergeGas & convergeTotal & massBalanceConvergence
     # TODO: Also do TRACE != 0 convergence test for pi_i
 
@@ -411,10 +404,10 @@ class ChemSolver:
                             continue
                         composition[symbol] = quantity
                     phase = int(line[i:i+2].strip(strip)); i += 2
-                    condensed = phase != 0 # TODO: store phase?
+                    condensed = phase != 0
                     M = float(line[i:i+13].strip(strip)); i += 13
                     # Comes as kJ/kmol so convert to J/kmol
-                    DeltaHForm = 1000 * float(line[i:i+15].strip(strip))
+                    DeltaHForm = 1e3 * float(line[i:i+15].strip(strip))
 
                     line = readline(chem_file); i = 0
                     providers = []
@@ -424,7 +417,7 @@ class ChemSolver:
                         
                         T = float(line[i:i+11].strip(strip))
                         # Valid at a single temperature but is specified as constant Cp
-                        providers.append(NASA9(0.9*T, 1.1*T, DeltaHForm, [0.0]*2+[DeltaHForm/Rhat/T]+[0.0]*5))
+                        providers.append(NASA9(T, T, DeltaHForm, np.array([0.0]*2+[DeltaHForm/Rhat/T]+[0.0]*5)))
                     else:
                         for j in range(fitPieces):
                             i = 0
@@ -438,7 +431,7 @@ class ChemSolver:
                             i += 8*5 # Ignore exponents (only specified for C_p and have to make consistent assumptions for others)
                             dho = float(line[i:i+17].strip(strip))
 
-                            coeffs, m = [0.0]*9, 0
+                            coeffs, m = np.zeros(9), 0
                             line = readline(chem_file); i = 0
                             for k in range(5):
                                 coeff = line[i:i+16].strip(strip); i += 16
@@ -504,6 +497,10 @@ class ChemSolver:
             self.valid = valid
     
     def solve(self, Pc, supply, max_iters=200, internal_state=None, reinit=True):
+        """
+            Pc combustion pressure in Pascals
+            supply: dictionary of inputs, keys are formula strings, values are mass fractions for for condensed species and (mass fraction, temperature in Kelvin, pressure in Pascals) for gaseous species
+        """
         # Basic input checks
         if len(supply) == 0 or Pc <= 0.0:
             return Result(False), None
@@ -557,7 +554,6 @@ class ChemSolver:
             x.Deltaln_n = 0.0
             x.Deltaln_T = 0.0
             x.Deltan_j = jnp.zeros(xm.N_gas)
-            x.b_i0 = jnp.zeros(xm.N_elem)
         
         # Begin from supply
         x.P = Pc
@@ -565,11 +561,11 @@ class ChemSolver:
         x.b_i0 = np.zeros(xm.N_elem)
         for formula, inputs in supply.items():
             sub = self.substances[formula]
-            m_frac, T, P = inputs
+            m_frac, T, P = inputs, sub.T_min, 1*_atm if sub.condensed else inputs
             n_j = m_frac/sub.M
             x.h_0 += n_j * sub.get_H_D(T) * Rhat * T
-            for elem, amount in sub.composition.items():
-                x.b_i0[present_elements.index(elem)] += amount * n_j # Loop across elements
+            for elem, amount in sub.composition.items(): # Loop across elements
+                x.b_i0[present_elements.index(elem)] += amount * n_j
         x.b_i0_max = np.max(x.b_i0)
         x.b_i0 = jnp.array(x.b_i0)
         x.gas_Cp_D, x.gas_H_D, x.gas_S_D = [jnp.zeros(xm.N_gas) for i in range(3)]
