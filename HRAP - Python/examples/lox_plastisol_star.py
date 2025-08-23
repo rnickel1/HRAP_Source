@@ -1,5 +1,5 @@
 # Purpose: Demonstrate API for arbitrary saturated fluids and non-circular ports with a LOX plastisol hybrid star grain example
-# Authors: Thomas Scott
+# Authors: Thomas A. Scott
 
 # https://scikit-image.org/docs/0.23.x/auto_examples/edges/plot_contours.html
 
@@ -19,13 +19,11 @@ from hrap.chamber import *
 from hrap.nozzle  import *
 from hrap.units   import _in, _ft, _lbf, _atm
 
-
 jax.config.update("jax_enable_x64", True)
-# np.random.seed(42)
-
-
-
 hrap_root = Path(imp_files('hrap'))
+file_prefix = 'nitrous_plastisol'
+
+
 
 print('Building combustion chemistry table...')
 plastisol = chem.make_basic_reactant(
@@ -33,21 +31,19 @@ plastisol = chem.make_basic_reactant(
     composition = { 'C': 7.200, 'H': 10.82, 'O': 1.14, 'Cl': 0.669 },
     M = 140.86, # kg/kmol
     T0 = 298.15, # K
-    h0 = -265357.55, # J/mol
+    h0 = -2.6535755e7, # J/kmol
 )
-comb = chem.ChemSolver(['./ssts_thermochem.txt', plastisol])
+comb = chem.ChemSolver([hrap_root/'ssts_thermochem.txt', plastisol])
 chem_Pc, chem_OF = np.linspace(10*_atm, 50*_atm, 10), np.linspace(1.0, 10.0, 20)
 chem_k, chem_M, chem_T = [np.zeros((chem_Pc.size, chem_OF.size)) for i in range(3)]
-ox, fu = 'O2(L)', 'Plastisol-362'
-# TODO: potentially confusing to user, don't allow specification
-# Chemistry of condensed inputs is only available at a single temperature
-T_ox, T_fu = 90.17, 298
+ox, fu_1, fu_2 = 'O2(L)', 'Plastisol-362', 'AL(cr)'
+mfrac_al = 0.2
 internal_state = None
 for j, OF in enumerate(chem_OF):
     for i, Pc in enumerate(chem_Pc):
         # print('OF={OF}, Pc={Pc}atm'.format(OF=OF, Pc=Pc/_atm))
         o = OF / (1 + OF) # o/f = OF, o+f=1 => o=OF/(1 + OF)
-        flame, internal_state = comb.solve(Pc, {ox: (o, T_ox, 1*_atm), fu: (1-o, T_fu, 1*_atm)}, max_iters=150, internal_state=internal_state)
+        flame, internal_state = comb.solve(Pc, {ox: o, fu_1: (1-mfrac_al)*(1-o), fu_2: mfrac_al*(1-o)}, max_iters=150, internal_state=internal_state)
         chem_k[i,j], chem_M[i,j], chem_T[i,j] = flame.gamma, flame.M, flame.T
 
 print('Baking LOX saturated property curves...')
@@ -55,12 +51,12 @@ get_sat_lox_props = fluid.bake_sat_coolprop('Oxygen', np.linspace(75, 150, 20))
 
 
 
-# Initialization
+print('Initializing engine...')
 tnk = make_sat_tank(
     get_sat_lox_props,
-    V = (np.pi/4 * 4.75**2 * _in**2) * (7.0 * _ft),
-    inj_CdA= 0.22 * (np.pi/4 * 0.5**2 * _in**2),
-    m_ox=12.6, # TODO: init limit
+    V = (np.pi/4 * 4.75**2 * _in**2) * (4.0 * _ft),
+    inj_CdA = 0.22 * (np.pi/4 * 0.5**2 * _in**2),
+    m_ox = 3.0, # TODO: init limit
     T = 125,
 )
 
@@ -69,9 +65,9 @@ shape = make_circle_shape(
 )
 grn = make_constOF_grain(
     shape,
-    OF = 3.5,
-    OD = 4.5 * _in,
-    L = 30.0 * _in,
+    OF = 4.5,
+    OD = grn_OD,
+    L = 20.0 * _in,
     rho = 1117.0,
 )
 
@@ -114,8 +110,7 @@ fire_engine = core.make_integrator(
 )
 
 # Integrate the engine state
-T = 12.0
-# T = 10E-2
+T = 7.0
 print('Running...')
 import time
 t1 = time.time()
@@ -125,40 +120,15 @@ t2  = time.time()
 t, x, xstack = fire_engine(s, x, dt=1E-3, T=T)
 jax.block_until_ready(xstack)
 t3 = time.time()
-print('done, first run was {a:.2f}s, second run was {b:.2f}s'.format(a=t2-t1, b=t3-t2))
+print('done, compile+run was {a:.2f}s, just run was {b:.2f}s'.format(a=t2-t1, b=t3-t2))
 
 # Unpack the dynamic engine state
 N_t = xstack.shape[0]
 tnk, grn, cmbr, noz = core.unpack_engine(s, xstack, method)
-# print('tnk', tnk.keys())
-# print('grn', grn.keys())
-# print('cmbr', cmbr.keys())
-# print('noz', noz.keys())
-# print()
-# print('Post-run arrays:')
-# for name, obj in (('tnk', tnk), ('grn', grn), ('cmbr', cmbr), ('noz', noz)):
-#     print(name+':')
-#     for key, val in obj.items():
-#         print(key+':', val)
-#     print()
 
 # Ensure results folder exists
 results_path = Path('./results')
 results_path.mkdir(parents=True, exist_ok=True)
-
-OD, L = 5*_in, 10*_ft
-# core.export_rse(
-    # results_path/'nitrous_plastic.rse',
-    # t, noz['thrust'].ravel(), noz['mdot'].ravel(), t*0, t*0,
-    # OD=OD, L=L, D_throat=s['noz_thrt'], D_exit=np.sqrt(s['noz_ER'])*s['noz_thrt'],
-    # motor_type='hybrid', mfg='HRAP',
-# )
-# core.export_eng(
-    # results_path/'nitrous_plastic.eng',
-    # t, noz['thrust'], t*0,
-    # OD=OD, L=L,
-    # mfg='HRAP',
-# )
 
 
 
@@ -223,16 +193,9 @@ axs[8].plot(np.linspace(0.0, T, N_t), cmbr['V0'] - grn['V'], label='Empty cmbr V
 axs[8].legend()
 
 
-# Write thrust validation, big hybrid 7-26-23
-daq = np.genfromtxt(hrap_root/'resources'/'validation'/'hybrid_fire_7_26_23.csv', delimiter=',', names=True, dtype=float, encoding='utf-8', deletechars='')
-axs[0].plot(daq['time'], daq['thrust']*_lbf, label='daq')
-axs[0].legend()
-# axs[0].plot()
-
-# Plot nozzle flow rate
 
 # Save plot
 fig.tight_layout()
-fig.savefig(results_path/'nitrous_plastic_plots.pdf', format='pdf', bbox_inches='tight', pad_inches=0.1)
+fig.savefig(results_path/(file_prefix+'_plots.pdf'), format='pdf', bbox_inches='tight', pad_inches=0.1)
 
 plt.show()
