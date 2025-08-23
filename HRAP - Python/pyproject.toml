@@ -15,6 +15,7 @@ dependencies = [
 	"scipy",
 	"dearpygui",
 	"dearpygui_ext",
+	"scikit-image",
 ]
 
 requires-python = ">= 3.10"

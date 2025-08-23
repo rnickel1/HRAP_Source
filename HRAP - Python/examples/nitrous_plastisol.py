@@ -1,5 +1,5 @@
 # Purpose: Demonstrate API usage and validate for a typical hybrid, case is similar to GUI defaults
-# Authors: Thomas Scott
+# Authors: Thomas A. Scott
 
 import scipy
 import numpy as np
