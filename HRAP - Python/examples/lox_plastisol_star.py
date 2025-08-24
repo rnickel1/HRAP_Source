@@ -1,7 +1,5 @@
 # Purpose: Demonstrate API for arbitrary saturated fluids and non-circular ports with a LOX plastisol hybrid star grain example
-# Authors: Thomas A. Scott
-
-# https://scikit-image.org/docs/0.23.x/auto_examples/edges/plot_contours.html
+# Authors: Thomas A. Scott, Roman Dickerson
 
 import scipy
 import numpy as np
@@ -21,7 +19,7 @@ from hrap.units   import _in, _ft, _lbf, _atm
 
 jax.config.update("jax_enable_x64", True)
 hrap_root = Path(imp_files('hrap'))
-file_prefix = 'nitrous_plastisol'
+file_prefix = 'lox_plastisol_star'
 
 
 
@@ -33,7 +31,7 @@ plastisol = chem.make_basic_reactant(
     T0 = 298.15, # K
     h0 = -2.6535755e7, # J/kmol
 )
-comb = chem.ChemSolver([hrap_root/'ssts_thermochem.txt', plastisol])
+comb = chem.ChemSolver([hrap_root/'thermo.dat', plastisol])
 chem_Pc, chem_OF = np.linspace(10*_atm, 50*_atm, 10), np.linspace(1.0, 10.0, 20)
 chem_k, chem_M, chem_T = [np.zeros((chem_Pc.size, chem_OF.size)) for i in range(3)]
 ox, fu_1, fu_2 = 'O2(L)', 'Plastisol-362', 'AL(cr)'
@@ -49,6 +47,37 @@ for j, OF in enumerate(chem_OF):
 print('Baking LOX saturated property curves...')
 get_sat_lox_props = fluid.bake_sat_coolprop('Oxygen', np.linspace(75, 150, 20))
 
+print('Baking grain geometry')
+# Define star using inner diameter, tip diameter, and number of tips; then bake into regress distance to exposed arc area curve fit
+grn_ID, grn_TD, grn_OD, N_tip = 2.0*_in, 3.5*_in, 4.5*_in, 6
+grn_xy = make_star_vertices(grn_ID, grn_TD, N_tip)
+grn_A0, grn_d, grn_d2a, all_contours = bake_d2a(grn_OD, grn_xy, Nx=64, Nd=16)
+d2a_curve = interpax.Interpolator1D(grn_d, grn_d2a, method='akima')
+
+# fig, axs = plt.subplots(nrows=1, ncols=2, figsize=(14,7))
+# axs = np.array(axs).ravel()
+# Nd_plt = 128
+# plt_grn_xy = np.append(grn_xy, [grn_xy[0,:]], axis=0)
+# plt_t = np.linspace(0.0, 2*np.pi, 64)
+# plt_d = np.arange(Nd_plt)/(Nd_plt-1)*grn_d[-1]
+# eq_r = grn_d2a[0]/(2*np.pi)
+# eq_d = np.arange(Nd_plt)/(Nd_plt-1)*(grn_OD/2 - eq_r)
+
+# for contour in all_contours:
+    # axs[0].plot(contour[:,0], contour[:,1], color='black')
+# axs[0].plot(plt_grn_xy[:,0], plt_grn_xy[:,1], color='black', linestyle='dashed')
+# axs[0].plot(np.cos(plt_t)*grn_OD/2, np.sin(plt_t)*grn_OD/2, color='black', linestyle='dashed')
+# axs[0].plot(np.cos(plt_t)*eq_r, np.sin(plt_t)*eq_r, color='blue', linestyle='dashed', label='equivalent diameter')
+# axs[0].legend(loc='upper right')
+
+# axs[1].plot(plt_d, d2a_curve(plt_d), label='star')
+# axs[1].scatter(grn_d, grn_d2a)
+# axs[1].plot(np.append(eq_d, eq_d[-1]), np.append(2*np.pi*(eq_r + eq_d),0.0), label='circular w/ equivalent diameter')
+# axs[1].legend(loc='upper right')
+# axs[1].set_xlabel('Regressed Distance [m]')
+# axs[1].set_ylabel('Exposed Arc Length [m]')
+# plt.show()
+
 
 
 print('Initializing engine...')
@@ -60,8 +89,12 @@ tnk = make_sat_tank(
     T = 125,
 )
 
-shape = make_circle_shape(
-    ID = 2.5 * _in,
+# shape = make_circle_shape(
+    # ID = 2.5 * _in,
+# )
+shape = make_arbitrary_shape(
+    d2a_curve,
+    A0 = grn_A0,
 )
 grn = make_constOF_grain(
     shape,
@@ -71,13 +104,8 @@ grn = make_constOF_grain(
     rho = 1117.0,
 )
 
-prepost_ID = 4.25*_in                              # Inner diameter of pre and post combustion chambers (m)
-prepost_V  = (3.5+1.7)*_in * np.pi/4*prepost_ID**2 # Empty volume of pre and post combustion chambers (m^3)
-rings_V    = 3 * (1/8*_in) * np.pi*(2.5/2 * _in)**2  # Empty volume of phenolic rings (m^3)
-fuel_V     = (30.0 * _in) * np.pi*(4.5/2 * _in)**2   # Empty volume of grain footprint (m^3)
 cmbr = make_chamber(
-    # V0 =  prepost_V + rings_V + fuel_V,            # Volume of chamber w/o grain (m^3)
-    V0 = 0.0, # Sim can be a bit unstable with this and incompressible injetor
+    V0 = 0.0,
     cstar_eff = 1.0,#0.95
 )
 
