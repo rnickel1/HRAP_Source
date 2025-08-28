@@ -14,8 +14,9 @@ import dearpygui.dearpygui as dpg
 from jax.scipy.interpolate import RegularGridInterpolator
 
 import hrap.core as core
-import hrap.units as units
+import hrap.chem as chem
 import hrap.fluid as fluid
+import hrap.units as units
 from hrap.tank    import *
 from hrap.grain   import *
 from hrap.chamber import *
@@ -48,6 +49,9 @@ upd_due      = True
 s, x, method = [None]*3
 t, xstack = [None]*2 # TODO: Make m, Cg part of x?
 fire_engine  = None
+comb, oxidizers, fuels = [None]*3
+
+N_fuel = 3
 
 def clamped_param(val, props):
     if 'min' in props and val < props['min']:
@@ -179,14 +183,46 @@ def init_deps(): # Called after init/load to verify consistency
     # man_call_ox_m()
     man_call_noz_ER()
 
-def load_preset_chem(name):
-    chem = scipy.io.loadmat(hrap_root/'resources'/'propellant_configs'/name)
+# def load_preset_chem(name):
+    # chem = scipy.io.loadmat(hrap_root/'resources'/'propellant_configs'/name)
     
-    chem = chem['s'][0][0]
-    chem_OF = chem['prop_OF'].ravel()
-    chem_Pc = chem['prop_Pc'].ravel()
-    chem_k, chem_M, chem_T = chem['prop_k'], chem['prop_M'], chem['prop_T']
-    if chem_k.size == 1: chem_k = np.full_like(chem_T, chem_k.item())
+    # chem = chem['s'][0][0]
+    # chem_OF = chem['prop_OF'].ravel()
+    # chem_Pc = chem['prop_Pc'].ravel()
+    # chem_k, chem_M, chem_T = chem['prop_k'], chem['prop_M'], chem['prop_T']
+    # if chem_k.size == 1: chem_k = np.full_like(chem_T, chem_k.item())
+
+    # chem_interp_k = RegularGridInterpolator((chem_OF, chem_Pc), chem_k, fill_value=1.4)
+    # chem_interp_M = RegularGridInterpolator((chem_OF, chem_Pc), chem_M, fill_value=29.0)
+    # chem_interp_T = RegularGridInterpolator((chem_OF, chem_Pc), chem_T, fill_value=293.0)
+
+    # return chem_interp_k, chem_interp_M, chem_interp_T
+
+def prep_chem(allow_rho_est=True):
+    chem_ox = { oxidizers['Nitrous Oxide']['chem']: 1.0 }
+    chem_fu = {  }
+    sum_fu_mf, grn_rho_est = 0.0, 0.0
+    for i in range(N_fuel):
+        component_i, mfrac_i = [dpg.get_value(k.format(i)) for k in ['grn_component_{}', 'grn_mfrac_{}']]
+        if component_i != 'None':
+            chem_fu[fuels[component_i]['chem']] = mfrac_i
+            sum_fu_mf += mfrac_i # For normalization
+            # rho = (sum m_i)/(sum V_i) = (sum m mf_i)/(sum m mf_i 1/rho_i) = 1 / (sum mf_i/rho_i)
+            grn_rho_est += mfrac_i / fuels[component_i]['rho']
+    grn_rho_est = 1 / grn_rho_est * sum_fu_mf
+    if allow_rho_est and dpg.get_value('grn_est_rho'):
+        set_param('grn_rho', grn_rho_est)
+    return chem_ox, chem_fu, sum_fu_mf
+
+def update_chem(chem_ox, chem_fu, sum_fu_mf=1.0):
+    chem_Pc, chem_OF = np.linspace(10*units._atm, 50*units._atm, 10), np.linspace(1.0, 10.0, 20)
+    chem_k, chem_M, chem_T = [np.zeros((chem_Pc.size, chem_OF.size)) for i in range(3)]
+    internal_state = None
+    for j, OF in enumerate(chem_OF):
+        for i, Pc in enumerate(chem_Pc):
+            o = OF / (1 + OF) # o/f = OF, o+f=1 => o=OF/(1 + OF)
+            flame, internal_state = comb.solve(Pc, {**{c: mf*o for c,mf in chem_ox.items()}, **{c: mf/sum_fu_mf*(1-o) for c,mf in chem_fu.items()}}, max_iters=150, internal_state=internal_state)
+            chem_k[i,j], chem_M[i,j], chem_T[i,j] = flame.gamma, flame.M, flame.T
 
     chem_interp_k = RegularGridInterpolator((chem_OF, chem_Pc), chem_k, fill_value=1.4)
     chem_interp_M = RegularGridInterpolator((chem_OF, chem_Pc), chem_M, fill_value=29.0)
@@ -243,17 +279,18 @@ def setup_motor(tnk_inj_vap_model, tnk_inj_liq_model, chem_interp_k, chem_interp
 
 def recompile_motor():
     global upd_due, s, x, method, fire_engine
-    # TOOD: skip recompile if combo already in some dict
-    gcm = dpg.get_value('select_grain_chem_mode')
-    if gcm == 'HRAP Presets':
-        print(dpg.get_value('select_grain_chem_hrap_presets')+'.mat')
-        chem_info = load_preset_chem(dpg.get_value('select_grain_chem_hrap_presets')+'.mat')
-    s, x, method, fire_engine = setup_motor(dpg.get_value('tnk_inj_vap_model'), dpg.get_value('tnk_inj_liq_model'), *chem_info)
+    # TOOD: skip recompile if combo already in some dict?
+    # gcm = dpg.get_value('select_grain_chem_mode')
+    # if gcm == 'HRAP Presets':
+        # print(dpg.get_value('select_grain_chem_hrap_presets')+'.mat')
+        # chem_info = load_preset_chem(dpg.get_value('select_grain_chem_hrap_presets')+'.mat')
+    s, x, method, fire_engine = setup_motor(dpg.get_value('tnk_inj_vap_model'), dpg.get_value('tnk_inj_liq_model'), *update_chem(*prep_chem(allow_rho_est=False)))
     upd_due = True
     # Need to respecify all internal variables based on config
     for tag, props in config.items():
         if props['direct']: upd_direct_param(tag)
     init_deps()
+    prep_chem() # Call again to estimate density (needed motor to init first)
 
 def calculate_m_Cg():
     dry_m, dry_cg, tnk_ID, ox_pos, grn_pos = [get_param(k) for k in ['dry_m', 'dry_cg', 'tnk_D', 'ox_pos', 'grn_pos']]
@@ -276,7 +313,7 @@ def calculate_m_Cg():
     return m, cg
 
 def main():
-    global hrap_root, config, upd_due, t, xstack #, s, x, method
+    global hrap_root, config, upd_due, t, xstack, comb, oxidizers, fuels #, s, x, method
 
     print('beginning w/ hrap version', hrap_version)
     jax.config.update('jax_enable_x64', True)
@@ -355,6 +392,42 @@ def main():
 
     apply_theme(settings['theme'], False)
     
+    # Create thermo database, including a few common ones not found in propep database
+    plastisol = chem.make_basic_reactant(
+        formula = 'Plastisol-362', composition = { 'C': 7.200, 'H': 10.82, 'O': 1.14, 'Cl': 0.669 },
+        M = 140.86, T0 = 298.15, h0 = -2.6535755e7, # kg/kmol, K, J/kmol
+    )
+    ABS = chem.make_basic_reactant(
+        formula = 'ABS', composition = { 'C': 3.85, 'H': 4.85, 'N': 0.43 },
+        M = 57.15, T0=298.15, h0=-6.263e7 # kg/kmol, K, J/kmol
+    )
+    comb = chem.ChemSolver([hrap_root/'thermo.dat', plastisol, ABS])
+    oxidizers = {
+        'Nitrous Oxide': {
+            'chem': 'N2O(L),298.15K',
+            'coolprop': 'NitrousOxide',
+        },
+        'Oxygen': {
+            'chem': 'O2(L)',
+            'coolprop': 'Oxygen',
+        },
+    }
+    # 1171 = 1 / (0.2/2700 + 0.8/x)
+    # x = 0.8/(1 / 1171 - 0.2/2700) = 1026
+    # 1117 is 95.4% of 20% al, 80% 362 used on redshift
+    fuels = {
+        'ABS': {
+            'chem': 'ABS',
+        },
+        'Plastisol-362': {
+            'chem': 'Plastisol-362',
+            'rho': 1026.0, # kg/m3
+        },
+        'Aluminum': {
+            'chem': 'AL(cr)',
+            'rho': 2712.0, # kg/m3
+        },
+    }
 
 
     # dpg.set_viewport_vsync(True)
@@ -619,6 +692,13 @@ def main():
                     'step': 1,
                 })
                 
+                with dpg.table_row():
+                    dpg.add_text('Oxidizer')
+                    dpg.add_combo(tag='ox_component_0'.format(i), items=list(oxidizers.keys()), default_value='Nitrous Oxide', width=-1)
+                    # dpg.add_text('Chem Preset')
+                    # dpg.add_combo(tag='select_grain_chem_hrap_presets', items=[
+                        # 'ABS', 'Asphalt', 'HDPE', 'HTPB_Paraffin', 'HTPB', 'Metalized_Plastisol', 'Paraffin', 'Sorbitol',
+                    # ], default_value='Metalized_Plastisol', callback=recompile_motor, width=-1)
                 make_param('Oxidizer Temperature', {
                     'type': float, 'units': 'K',
                     'tag': 'tnk_T', 'direct': True,
@@ -659,9 +739,6 @@ def main():
                     'decimal': 1,
                     'man_call': man_call_tnk_fill,
                 })
-                # V = (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
-                # inj_CdA= 0.5 * (np.pi/4 * 0.5**2 * _in**2),
-                # m_ox=14.0
         
         # Make grain window
         with dpg.window(tag='grain', label='Grain', **settings):
@@ -673,36 +750,22 @@ def main():
                     dpg.add_text('Grain Shape')
                     # dpg.add_combo(tag='select_shape', items=['Cylindrical', 'Star', 'Custom'], default_value='Cylindrical', width=-1)
                     dpg.add_combo(tag='select_shape', items=['Cylindrical'], default_value='Cylindrical', width=-1)
-                with dpg.table_row():
-                    dpg.add_text('Rate Law')
-                    # dpg.add_combo(tag='select_regression', items=['Constant O/F', 'Regression Rate'], default_value='Constant O/F', width=-1)
-                    dpg.add_combo(tag='select_regression', items=['Constant O/F'], default_value='Constant O/F', width=-1)
-                with dpg.table_row():
-                    dpg.add_text('Chem Mode')
-                    # dpg.add_combo(tag='select_grain_chem_mode', items=['HRAP Presets', 'Other Preset', 'Custom'], default_value='HRAP Presets', width=-1)\
-                    dpg.add_combo(tag='select_grain_chem_mode', items=['HRAP Presets'], default_value='HRAP Presets', width=-1)
-                with dpg.table_row():
-                    dpg.add_text('Chem Preset')
-                    dpg.add_combo(tag='select_grain_chem_hrap_presets', items=[
-                        'ABS', 'Asphalt', 'HDPE', 'HTPB_Paraffin', 'HTPB', 'Metalized_Plastisol', 'Paraffin', 'Sorbitol',
-                    ], default_value='Metalized_Plastisol', callback=recompile_motor, width=-1)
+                # with dpg.table_row():
+                    # dpg.add_text('Fuel Chemistry')
+                # with dpg.table_row():
+                    # dpg.add_text('Chem Mode')
+                    # # dpg.add_combo(tag='select_grain_chem_mode', items=['HRAP Presets', 'Other Preset', 'Custom'], default_value='HRAP Presets', width=-1)\
+                    # dpg.add_combo(tag='select_grain_chem_mode', items=['HRAP Presets'], default_value='HRAP Presets', width=-1)
+                # with dpg.table_row():
+                    # dpg.add_text('Chem Mode')
+                    # # dpg.add_combo(tag='select_grain_chem_mode', items=['HRAP Presets', 'Other Preset', 'Custom'], default_value='HRAP Presets', width=-1)\
+                    # dpg.add_combo(tag='select_grain_chem_mode', items=['HRAP Presets'], default_value='HRAP Presets', width=-1)
+                # with dpg.table_row():
+                    # dpg.add_text('Chem Preset')
+                    # dpg.add_combo(tag='select_grain_chem_hrap_presets', items=[
+                        # 'ABS', 'Asphalt', 'HDPE', 'HTPB_Paraffin', 'HTPB', 'Metalized_Plastisol', 'Paraffin', 'Sorbitol',
+                    # ], default_value='Metalized_Plastisol', callback=recompile_motor, width=-1)
                 
-                make_param('Fixed O/F ratio', {
-                    'type': float,
-                    'tag': 'grn_OF', 'direct': True,
-                    'min': 0.01, 'max': 100.0,
-                    'default': 3.5,
-                    'step': 1E-1,
-                    'decimal': 2,
-                })
-                make_param('Density', {
-                    'type': float,
-                    'tag': 'grn_rho', 'direct': True,
-                    'min': 100.0,
-                    'default': 1117.0,
-                    'step': 10.0,
-                    'decimal': 0,
-                })
                 make_param('Inner diamater', {
                     'type': float, 'units': 'mm',
                     'tag': 'grn_shape_ID', 'direct': True,
@@ -727,6 +790,41 @@ def main():
                     'step': 1E-2,
                     'decimal': 4,
                 })
+                
+                with dpg.table_row():
+                    dpg.add_text('Rate Law')
+                    # dpg.add_combo(tag='select_regression', items=['Constant O/F', 'Regression Rate'], default_value='Constant O/F', width=-1)
+                    dpg.add_combo(tag='select_regression', items=['Constant O/F'], default_value='Constant O/F', width=-1)
+                make_param('Fixed O/F ratio', {
+                    'type': float,
+                    'tag': 'grn_OF', 'direct': True,
+                    'min': 0.01, 'max': 100.0,
+                    'default': 3.5,
+                    'step': 1E-1,
+                    'decimal': 2,
+                })
+                with dpg.table_row():
+                    dpg.add_checkbox(label='Use Estimated Density', tag='grn_est_rho', default_value=True, callback=lambda: dpg.configure_item('grn_rho', readonly=dpg.get_value('grn_est_rho')))
+                make_param('Density', {
+                    'type': float,
+                    'tag': 'grn_rho', 'direct': True,
+                    'min': 100.0,
+                    'default': 1117.0,
+                    'step': 10.0,
+                    'decimal': 0,
+                })
+                
+                default_fu_components = ['Plastisol-362', 'Aluminum', 'None']
+                default_fu_mfracs = [0.8, 0.2, 0.01]
+                for i in range(N_fuel):
+                    with dpg.table_row():
+                        dpg.add_text('Component')
+                        dpg.add_combo(tag='grn_component_{}'.format(i), items=['None']+list(fuels.keys()), default_value=default_fu_components[i], width=-1)
+                    with dpg.table_row():
+                        dpg.add_text('Mass Fraction')
+                        dpg.add_input_float(format=f'%.3f', tag='grn_mfrac_{}'.format(i), default_value=default_fu_mfracs[i], callback=None, width=-1)
+                with dpg.table_row():
+                    dpg.add_text('Warning: normalization has occured')
         
         # Make chamber window
         with dpg.window(tag='chamber', label='Chamber', **settings):
@@ -881,7 +979,7 @@ def main():
 
     # part_configs = { 'cmbr': cmbr_config, 'noz': noz_config, 'tnk': tnk_config, 'grn': grain_config }
     # direct_tags = [ tag for tag in config if ('direct' in config[tag] and config[tag]['direct']) ]
-    init_deps()
+    # init_deps()
 
     # resize_callback()
     dpg.set_viewport_resize_callback(resize_callback)
