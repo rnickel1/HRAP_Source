@@ -415,6 +415,7 @@ def main():
     # 1171 = 1 / (0.2/2700 + 0.8/x)
     # x = 0.8/(1 / 1171 - 0.2/2700) = 1026
     # 1117 is 95.4% of 20% al, 80% 362 used on redshift
+    # 'ABS', 'Asphalt', 'HDPE', 'HTPB_Paraffin', 'HTPB', 'Metalized_Plastisol', 'Paraffin', 'Sorbitol'
     fuels = {
         'ABS': {
             'chem': 'ABS',
@@ -514,6 +515,14 @@ def main():
                 dpg.add_text(title)
                 dpg.add_input_int(tag=props['tag'], callback=callback, width=-1)
             if 'default' in props: dpg.set_value(props['tag'], int(props['default']))
+        if props['type'] == list:
+            callbacks = [lambda *_, key=props['tag']: upd_param(key)] # Same callback setup as above
+            if 'man_call' in props: callbacks.append(props['man_call'])
+            callback = lambda *_, farr=callbacks: [f() for f in farr]
+            with dpg.table_row():
+                dpg.add_text(title)
+                dpg.add_combo(tag=props['tag'], items=props['items'], callback=callback, width=-1)
+            if 'default' in props: dpg.set_value(props['tag'], str(props['default']))
     
     def save_callback():
         print('saving', active_file)
@@ -650,13 +659,20 @@ def main():
                     'decimal': 6,
                     'man_call': man_call_tnk_V,
                 })
-
-                with dpg.table_row():
-                    dpg.add_text('Injector Vapor Model')
-                    dpg.add_combo(tag='tnk_inj_vap_model', items=['Real Gas', 'Incompressible'], default_value='Real Gas', callback=recompile_motor, width=-1)
-                with dpg.table_row():
-                    dpg.add_text('Injector Liquid Model')
-                    dpg.add_combo(tag='tnk_inj_liq_model', items=['Incompressible'], default_value='Incompressible', callback=recompile_motor, width=-1)
+                make_param('Injector Vapor Model', {
+                    'type': list,
+                    'tag': 'tnk_inj_vap_model',
+                    'items': ['Real Gas', 'Incompressible'],
+                    'default': 'Real Gas',
+                    'man_call': recompile_motor,
+                })
+                make_param('Injector Liquid Model', {
+                    'type': list,
+                    'tag': 'tnk_inj_liq_model',
+                    'items': ['Incompressible'],
+                    'default': 'Incompressible',
+                    'man_call': recompile_motor,
+                })
                 make_param('Injector Diameter', {
                     'type': float, 'units': 'mm',
                     'tag': 'tnk_inj_D',
@@ -691,14 +707,13 @@ def main():
                     'default': 1,
                     'step': 1,
                 })
-                
-                with dpg.table_row():
-                    dpg.add_text('Oxidizer')
-                    dpg.add_combo(tag='ox_component_0'.format(i), items=list(oxidizers.keys()), default_value='Nitrous Oxide', width=-1)
-                    # dpg.add_text('Chem Preset')
-                    # dpg.add_combo(tag='select_grain_chem_hrap_presets', items=[
-                        # 'ABS', 'Asphalt', 'HDPE', 'HTPB_Paraffin', 'HTPB', 'Metalized_Plastisol', 'Paraffin', 'Sorbitol',
-                    # ], default_value='Metalized_Plastisol', callback=recompile_motor, width=-1)
+                make_param('Oxidizer {}'.format(0+1), {
+                    'type': list,
+                    'tag': 'ox_component_{}'.format(0),
+                    'items': list(oxidizers.keys()),
+                    'default': 'Nitrous Oxide',
+                    # 'man_call': man_call_tnk_D,
+                })
                 make_param('Oxidizer Temperature', {
                     'type': float, 'units': 'K',
                     'tag': 'tnk_T', 'direct': True,
@@ -746,26 +761,17 @@ def main():
             with dpg.table(**input_table_kwargs):
                 for i in range(3): dpg.add_table_column(init_width_or_weight=col_w[i])
                 
-                with dpg.table_row():
-                    dpg.add_text('Grain Shape')
-                    # dpg.add_combo(tag='select_shape', items=['Cylindrical', 'Star', 'Custom'], default_value='Cylindrical', width=-1)
-                    dpg.add_combo(tag='select_shape', items=['Cylindrical'], default_value='Cylindrical', width=-1)
                 # with dpg.table_row():
-                    # dpg.add_text('Fuel Chemistry')
-                # with dpg.table_row():
-                    # dpg.add_text('Chem Mode')
-                    # # dpg.add_combo(tag='select_grain_chem_mode', items=['HRAP Presets', 'Other Preset', 'Custom'], default_value='HRAP Presets', width=-1)\
-                    # dpg.add_combo(tag='select_grain_chem_mode', items=['HRAP Presets'], default_value='HRAP Presets', width=-1)
-                # with dpg.table_row():
-                    # dpg.add_text('Chem Mode')
-                    # # dpg.add_combo(tag='select_grain_chem_mode', items=['HRAP Presets', 'Other Preset', 'Custom'], default_value='HRAP Presets', width=-1)\
-                    # dpg.add_combo(tag='select_grain_chem_mode', items=['HRAP Presets'], default_value='HRAP Presets', width=-1)
-                # with dpg.table_row():
-                    # dpg.add_text('Chem Preset')
-                    # dpg.add_combo(tag='select_grain_chem_hrap_presets', items=[
-                        # 'ABS', 'Asphalt', 'HDPE', 'HTPB_Paraffin', 'HTPB', 'Metalized_Plastisol', 'Paraffin', 'Sorbitol',
-                    # ], default_value='Metalized_Plastisol', callback=recompile_motor, width=-1)
-                
+                    # dpg.add_text('Grain Shape')
+                    # # dpg.add_combo(tag='select_shape', items=['Cylindrical', 'Star', 'Custom'], default_value='Cylindrical', width=-1)
+                    # dpg.add_combo(tag='select_shape', items=['Cylindrical'], default_value='Cylindrical', width=-1)
+                make_param('Grain Shape', {
+                    'type': list,
+                    'tag': 'grn_shape',
+                    'items': ['Cylindrical'], # ['Cylindrical', 'Star', 'Custom']
+                    'default': 'Cylindrical',
+                    # 'man_call': man_call_tnk_D,
+                })
                 make_param('Inner diamater', {
                     'type': float, 'units': 'mm',
                     'tag': 'grn_shape_ID', 'direct': True,
@@ -790,11 +796,13 @@ def main():
                     'step': 1E-2,
                     'decimal': 4,
                 })
-                
-                with dpg.table_row():
-                    dpg.add_text('Rate Law')
-                    # dpg.add_combo(tag='select_regression', items=['Constant O/F', 'Regression Rate'], default_value='Constant O/F', width=-1)
-                    dpg.add_combo(tag='select_regression', items=['Constant O/F'], default_value='Constant O/F', width=-1)
+                make_param('Rate Law', {
+                    'type': list,
+                    'tag': 'select_regression',
+                    'items': ['Constant O/F'], # ['Constant O/F', 'Regression Rate']
+                    'default': 'Constant O/F',
+                    # 'man_call': man_call_tnk_D,
+                })
                 make_param('Fixed O/F ratio', {
                     'type': float,
                     'tag': 'grn_OF', 'direct': True,
@@ -813,16 +821,26 @@ def main():
                     'step': 10.0,
                     'decimal': 0,
                 })
+                dpg.configure_item('grn_rho', readonly=True)
                 
                 default_fu_components = ['Plastisol-362', 'Aluminum', 'None']
                 default_fu_mfracs = [0.8, 0.2, 0.01]
                 for i in range(N_fuel):
-                    with dpg.table_row():
-                        dpg.add_text('Component')
-                        dpg.add_combo(tag='grn_component_{}'.format(i), items=['None']+list(fuels.keys()), default_value=default_fu_components[i], width=-1)
-                    with dpg.table_row():
-                        dpg.add_text('Mass Fraction')
-                        dpg.add_input_float(format=f'%.3f', tag='grn_mfrac_{}'.format(i), default_value=default_fu_mfracs[i], callback=None, width=-1)
+                    make_param('Component {}'.format(i+1), {
+                        'type': list,
+                        'tag': 'grn_component_{}'.format(i),
+                        'items': (['None']if i>0 else [])+list(fuels.keys()),
+                        'default': default_fu_components[i],
+                        'man_call': man_call_tnk_D,
+                    })
+                    make_param('Mass Fraction {}'.format(i+1), {
+                        'type': float,
+                        'tag': 'grn_mfrac_{}'.format(i),
+                        'min': 0.01,
+                        'default': default_fu_mfracs[i],
+                        'step': 0.01,
+                        'decimal': 3,
+                    })
                 with dpg.table_row():
                     dpg.add_text('Warning: normalization has occured')
         
