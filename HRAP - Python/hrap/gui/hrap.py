@@ -436,6 +436,7 @@ def main():
     fuels = {
         'ABS': {
             'chem': 'ABS',
+            'rho': 1070.0, # kg/m3, varies on blend so not a precise value
         },
         'Plastisol-362': {
             'chem': 'Plastisol-362',
@@ -860,7 +861,7 @@ def main():
                         'man_call': recompile_motor,
                     })
                 with dpg.table_row(): # TODO: only show when doesn't sum to 1...
-                    dpg.add_text('Warning: normalization has occured')
+                    dpg.add_text('Warning: mfrac normalization has occured')
         
         # Make chamber window
         with dpg.window(tag='chamber', label='Chamber', **settings):
