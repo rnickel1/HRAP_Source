@@ -22,7 +22,7 @@ requires-python = ">= 3.10"
 
 authors = [
     {name = "Drew Nickel"},
-    {name = "Thomas Scott"},
+    {name = "Thomas A. Scott"},
 ]
 
 description = "HRAP is a versatile tool for simulation of hybrid rocket engines."

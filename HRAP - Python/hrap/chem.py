@@ -580,7 +580,7 @@ class ChemSolver:
         result.M = 1/x.n
         result.R = Rhat / result.M
         # result.composition = { full_gasses[j].formula: x.n_j[j]*result.M for j in range(xm.N_gas) } # TODO: Can't do unless put full gasses in the internal state tuple
-        print(f'result (took {i} iters): T={result.T}, M={result.M}')
+        # print(f'result (took {i} iters): T={result.T}, M={result.M}')
         
         # Compute gas properties that require derivatives, such as specific heats
         result.Cp, dlnV_dlnT, dlnV_dlnP = postprocessing(x, xm)

@@ -214,7 +214,6 @@ axs[8].legend()
 daq = np.genfromtxt(hrap_root/'resources'/'validation'/'hybrid_fire_7_26_23.csv', delimiter=',', names=True, dtype=float, encoding='utf-8', deletechars='')
 axs[0].plot(daq['time'], daq['thrust']*_lbf, label='daq')
 axs[0].legend()
-# axs[0].plot()
 
 
 
