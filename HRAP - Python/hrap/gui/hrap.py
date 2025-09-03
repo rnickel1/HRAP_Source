@@ -26,8 +26,6 @@ from hrap.units   import _in, _ft
 from hrap.gui.themes import create_babber_theme
 from dearpygui_ext.themes import create_theme_imgui_light, create_theme_imgui_dark
 
-get_sat_props = fluid.bake_sat_coolprop('NitrousOxide', np.linspace(183.0, 309.0, 20))
-
 hrap_version = version('hrap')
 
 # Virtualized Python environments may redirect these to other locations
@@ -50,6 +48,7 @@ s, x, method = [None]*3
 t, xstack = [None]*2 # TODO: Make m, Cg part of x?
 fire_engine  = None
 comb, oxidizers, fuels = [None]*3
+get_sat_props, get_Pv_loss = None, None
 
 N_fuel = 3
 
@@ -134,7 +133,6 @@ def man_call_tnk_T():
     set_param('tnk_P', props['Pv'])
     set_param('tnk_m_ox', fill/100.0 * props['rho_l'] * V)
 
-get_Pv_loss = jax.jit(lambda T, Pv_targ, get_sat_props=get_sat_props: get_sat_props(T)['Pv'] - Pv_targ)
 def man_call_tnk_P():
     T_props = config['tnk_T']
     T_min, T_max = T_props['min'], T_props['max']
@@ -278,7 +276,15 @@ def setup_motor(tnk_inj_vap_model, tnk_inj_liq_model, chem_interp_k, chem_interp
     return s, x, method, fire_engine
 
 def recompile_motor():
-    global upd_due, s, x, method, fire_engine
+    global config, upd_due, s, x, method, fire_engine, get_sat_props, get_Pv_loss
+    
+    # Handle any changes in the oxidizer
+    ox = oxidizers[dpg.get_value('ox_component_0')]
+    # Bake saturation curves
+    get_sat_props = fluid.bake_sat_coolprop(ox['coolprop'], np.linspace(ox['T_min'], ox['T_max'], 20))
+    # Make loss function for Pv editor in GUI
+    get_Pv_loss = jax.jit(lambda T, Pv_targ, get_sat_props=get_sat_props: get_sat_props(T)['Pv'] - Pv_targ)
+
     # TOOD: skip recompile if combo already in some dict?
     # gcm = dpg.get_value('select_grain_chem_mode')
     # if gcm == 'HRAP Presets':
@@ -291,6 +297,15 @@ def recompile_motor():
         if props['direct']: upd_direct_param(tag)
     init_deps()
     prep_chem() # Call again to estimate density (needed motor to init first)
+    
+    # Finish oxidizer changes
+    # Update GUI limits
+    config['tnk_T']['min'], config['tnk_T']['max'] = ox['T_min'], ox['T_max']
+    # Re-apply current T value to apply limits
+    print(get_param('tnk_T'))
+    set_param('tnk_T', get_param('tnk_T'))
+    man_call_tnk_T()
+    print('tnk T lims', config['tnk_T']['min'], config['tnk_T']['max'])
 
 def calculate_m_Cg():
     dry_m, dry_cg, tnk_ID, ox_pos, grn_pos = [get_param(k) for k in ['dry_m', 'dry_cg', 'tnk_D', 'ox_pos', 'grn_pos']]
@@ -406,10 +421,12 @@ def main():
         'Nitrous Oxide': {
             'chem': 'N2O(L),298.15K',
             'coolprop': 'NitrousOxide',
+            'T_min': 183.0, 'T_max': 309.0, # Low is generously high, yet leaves room for applicabiltiy and 309 is max applicability of sat nos
         },
         'Oxygen': {
             'chem': 'O2(L)',
             'coolprop': 'Oxygen',
+            'T_min': 75.0, 'T_max': 150.0,
         },
     }
     # 1171 = 1 / (0.2/2700 + 0.8/x)
@@ -712,13 +729,13 @@ def main():
                     'tag': 'ox_component_{}'.format(0),
                     'items': list(oxidizers.keys()),
                     'default': 'Nitrous Oxide',
-                    # 'man_call': man_call_tnk_D,
+                    'man_call': recompile_motor,
                 })
                 make_param('Oxidizer Temperature', {
                     'type': float, 'units': 'K',
                     'tag': 'tnk_T', 'direct': True,
-                    'min': 240.0, # Generously high, yet leaves room for applicabiltiy
-                    'max': 305.0, # 309 is max applicability of sat nos
+                    'min': 240.0,
+                    'max': 305.0,
                     'default': 294.0,
                     'step': 1.0,
                     'decimal': 1,
@@ -831,7 +848,7 @@ def main():
                         'tag': 'grn_component_{}'.format(i),
                         'items': (['None']if i>0 else [])+list(fuels.keys()),
                         'default': default_fu_components[i],
-                        'man_call': man_call_tnk_D,
+                        'man_call': recompile_motor,
                     })
                     make_param('Mass Fraction {}'.format(i+1), {
                         'type': float,
@@ -840,8 +857,9 @@ def main():
                         'default': default_fu_mfracs[i],
                         'step': 0.01,
                         'decimal': 3,
+                        'man_call': recompile_motor,
                     })
-                with dpg.table_row():
+                with dpg.table_row(): # TODO: only show when doesn't sum to 1...
                     dpg.add_text('Warning: normalization has occured')
         
         # Make chamber window

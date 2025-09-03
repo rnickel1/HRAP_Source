@@ -47,7 +47,7 @@ for j, OF in enumerate(chem_OF):
         chem_k[i,j], chem_M[i,j], chem_T[i,j] = flame.gamma, flame.M, flame.T
 
 print('Baking LOX saturated property curves...')
-get_sat_lox_props = fluid.bake_sat_coolprop('Oxygen', np.linspace(75, 150, 20))
+get_sat_lox_props = fluid.bake_sat_coolprop('Oxygen', np.linspace(75.0, 150.0, 20))
 
 
 
