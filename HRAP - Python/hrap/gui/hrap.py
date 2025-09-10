@@ -29,7 +29,7 @@ from dearpygui_ext.themes import create_theme_imgui_light, create_theme_imgui_da
 hrap_version = version('hrap')
 
 # Virtualized Python environments may redirect these to other locations
-# Note that Windows Store Python redirects %APPDATA%\Roaming to %APPDATA%\Local\Packages\PythonSoftwareFoundation.Python.[some garbage]\LocalCache\Roaming
+# For example, Windows Store Python redirects %APPDATA%\Roaming to %APPDATA%\Local\Packages\PythonSoftwareFoundation.Python.[some garbage]\LocalCache\Roaming
 def get_datadir() -> Path:
     home = Path.home()
     if sys.platform == 'win32':
