@@ -94,9 +94,9 @@ def upd_param(tag):
 
 def set_param(tag, val):
     props = config[tag]
-    _v = float(val)
-    if 'units' in props: _v = props['sim2gui_units'](_v)
-    dpg.set_value(tag, _v)
+    if props['type'] == float: val = float(val) # Cast to ensure correct type for reals i.e. to convert JAX containers
+    if 'units' in props: val = props['sim2gui_units'](val)
+    dpg.set_value(tag, val)
     return upd_param(tag)
 
 # Callbacks for manual adjustments (gets sets the UI components, not the motor)
