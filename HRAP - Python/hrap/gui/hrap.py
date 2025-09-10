@@ -29,7 +29,7 @@ from dearpygui_ext.themes import create_theme_imgui_light, create_theme_imgui_da
 hrap_version = version('hrap')
 
 # Virtualized Python environments may redirect these to other locations
-# Note that Windows Store Python redirects %APPDATA%\Roaming to %APPDATA%\Local\Packages\PythonSoftwareFoundation.Python.[some garbage]\LocalCache\Roaming
+# For example, Windows Store Python redirects %APPDATA%\Roaming to %APPDATA%\Local\Packages\PythonSoftwareFoundation.Python.[some garbage]\LocalCache\Roaming
 def get_datadir() -> Path:
     home = Path.home()
     if sys.platform == 'win32':
@@ -94,9 +94,9 @@ def upd_param(tag):
 
 def set_param(tag, val):
     props = config[tag]
-    _v = float(val)
-    if 'units' in props: _v = props['sim2gui_units'](_v)
-    dpg.set_value(tag, _v)
+    if props['type'] == float: val = float(val) # Cast to ensure correct type for reals i.e. to convert JAX containers
+    if 'units' in props: val = props['sim2gui_units'](val)
+    dpg.set_value(tag, val)
     return upd_param(tag)
 
 # Callbacks for manual adjustments (gets sets the UI components, not the motor)
