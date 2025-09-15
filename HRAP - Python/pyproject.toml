@@ -2,6 +2,11 @@
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build]
+exclude = ["hrap/gui/frontend/node_modules"] # TODO: want to include dist but remove everything else, dist needs to be at higher level
+#[tool.setuptools]
+#packages = ["hrap", "hrap.gui", "hrap.resources", "hrap.resources.fonts", "hrap.resources.fonts", "hrap.resources.propellant_config", "hrap.resources.validation"]
+
 [project]
 name = "hrap"
 version = "0.1.4"
