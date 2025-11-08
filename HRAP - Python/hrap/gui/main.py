@@ -1,5 +1,6 @@
 import os
 import sys
+import copy
 import time
 from pathlib import Path
 import pickle as pkl
@@ -230,10 +231,16 @@ def update_chem(chem_ox, chem_fu, sum_fu_mf=1.0):
     chem_Pc, chem_OF = np.linspace(10*units._atm, 50*units._atm, 10), np.linspace(1.0, 10.0, 20)
     chem_k, chem_M, chem_T = [np.zeros((chem_Pc.size, chem_OF.size)) for i in range(3)]
     internal_state = None
+    internal_state_row = None
     for j, OF in enumerate(chem_OF):
         for i, Pc in enumerate(chem_Pc):
             o = OF / (1 + OF) # o/f = OF, o+f=1 => o=OF/(1 + OF)
-            flame, internal_state = comb.solve(Pc, {**{c: mf*o for c,mf in chem_ox.items()}, **{c: mf/sum_fu_mf*(1-o) for c,mf in chem_fu.items()}}, max_iters=150, internal_state=internal_state)
+            # Use last Pc as guess for fixed OF, last OF first PC when starting a new OF
+            _internal_state = internal_state_row if i == 0 else internal_state
+            flame, internal_state = comb.solve(Pc, {**{c: mf*o for c,mf in chem_ox.items()}, **{c: mf/sum_fu_mf*(1-o) for c,mf in chem_fu.items()}}, max_iters=150, internal_state=_internal_state, reinit=False)
+            if i == 0 and j < len(chem_OF)-1:
+                x, xm, pe = internal_state
+                internal_state_row = (copy.deepcopy(x), copy.deepcopy(xm), pe)
             chem_k[i,j], chem_M[i,j], chem_T[i,j] = flame.gamma, flame.M, flame.T
 
     chem_interp_k = RegularGridInterpolator((chem_OF, chem_Pc), chem_k, fill_value=1.4)
