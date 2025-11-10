@@ -214,7 +214,7 @@ class InternalState(object):
 
 def solver_cond(loop_val):
     i, is_converged, x, xm = loop_val
-    return i <= xm.max_iters #and not is_converged
+    return (i <= xm.max_iters) & (~is_converged)
 def solver_body(loop_val):
     i, is_converged, x, xm = loop_val
     gas_Cp_D, gas_H_D, gas_S_D = [get_my_D(xm.gas_T_bounds, xm.gas_coeffs, x.T) for get_my_D in [get_Cp_D, get_H_D, get_S_D]]
@@ -279,10 +279,13 @@ def solver_body(loop_val):
     sumN_j = jnp.sum(x.n_j)
     convergeGas = (jnp.sum(x.n_j*jnp.abs(x.Deltan_j)) / sumN_j) <= 5e-6
     convergeTotal = (x.n * jnp.abs(x.Deltaln_n) / sumN_j) <= 5e-6
-    sum_aij_nj = jnp.sum(xm.gas_a[i] * x.n_j[:,None], axis=0)
-    massBalanceConvergence = jnp.all(jnp.abs(x.b_i0 - sum_aij_nj) > x.b_i0_max*1e-6)
+    sum_aij_nj = jnp.sum(xm.gas_a * x.n_j[:,None], axis=0) # n_j[j]*gas_a[j,:]
+    massBalanceConvergence = jnp.all(jnp.abs(x.b_i0 - sum_aij_nj) < x.b_i0_max*1e-6)
     is_converged = convergedTemp & convergeGas & convergeTotal & massBalanceConvergence
     # TODO: Also do TRACE != 0 convergence test for pi_i
+    # jax.debug.print('Converged? {} {}, T {}, gas {}, total {}, bal {}', is_converged, i, convergedTemp, convergeGas, convergeTotal, massBalanceConvergence)
+    # jax.debug.print('Converged? {}, T {}, gas {}, total {}, bal {} vs {} is {}', i, jnp.abs(x.Deltaln_T), (jnp.sum(x.n_j*jnp.abs(x.Deltan_j)) / sumN_j), (x.n * jnp.abs(x.Deltaln_n) / sumN_j), jnp.abs(x.b_i0 - sum_aij_nj), x.b_i0_max*1e-6, jnp.abs(x.b_i0 - sum_aij_nj) - x.b_i0_max*1e-6)
+    # jax.debug.print('bi0, {}, sum current {}', x.b_i0, sum_aij_nj)
 
     return i+1, is_converged, x, xm
 def solver_loop(x, xm):
@@ -572,10 +575,10 @@ class ChemSolver:
         
         # Solve for the equilibrium state
         i, x = solver_loop(x, xm)
-        if i == max_iters + 1: i = max_iters # If terminated due to max_iters, will be 1 too high
+        # if i == max_iters + 1: i = max_iters # If terminated due to max_iters, will be 1 too high
 
         result = self.Result(True)
-        result.iters = i
+        result.iters = i - 1 # Always too high as condition is after increment
         result.T = x.T
         result.M = 1/x.n
         result.R = Rhat / result.M

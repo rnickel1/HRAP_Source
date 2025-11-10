@@ -9,7 +9,7 @@ exclude = ["hrap/gui/frontend/node_modules"] # TODO: want to include dist but re
 
 [project]
 name = "hrap"
-version = "0.1.4"
+version = "0.1.5"
 
 # dynamic = ["version"]
 # TODO: option that depends on jax[gpu] for linux
@@ -38,5 +38,4 @@ description = "HRAP is a versatile tool for simulation of hybrid rocket engines.
 Homepage = "https://github.com/rnickel1/HRAP_Source"
 
 [project.scripts]
-hrap = "hrap.gui.hrap:main"
-#__main__ = "hrap.examples.nitrous_hybrid_gui:main"
+hrap = "hrap.gui.main:main"
