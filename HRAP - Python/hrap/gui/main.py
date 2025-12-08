@@ -376,7 +376,6 @@ def main():
     
     def save_settings(settings):
         pkl.dump(settings, open(data_root/'settings.pkl', 'wb'))
-        print(pkl.load(open(data_root/'settings.pkl', 'rb')))
     
     def save_config(file):
         save, save_config = { }, { }
