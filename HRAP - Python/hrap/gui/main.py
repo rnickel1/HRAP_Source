@@ -42,6 +42,7 @@ def get_datadir() -> Path:
 
 # Global vars, issues unless declared outside of main
 hrap_root    = None
+settings     = None
 active_file  = None
 config       = { }
 upd_due      = True
@@ -349,7 +350,7 @@ def calculate_m_Cg():
     return m, cg
 
 def main():
-    global hrap_root, config, upd_due, t, xstack, comb, oxidizers, fuels #, s, x, method
+    global hrap_root, settings, config, upd_due, t, xstack, comb, oxidizers, fuels #, s, x, method
 
     print('beginning w/ hrap version', hrap_version)
     jax.config.update('jax_enable_x64', True)
@@ -375,6 +376,7 @@ def main():
     
     def save_settings(settings):
         pkl.dump(settings, open(data_root/'settings.pkl', 'wb'))
+        print(pkl.load(open(data_root/'settings.pkl', 'rb')))
     
     def save_config(file):
         save, save_config = { }, { }
@@ -509,7 +511,7 @@ def main():
         for i in range(2): set_wh('preview_{i}'.format(i=i), vw // 2 - 18, vh // 3 - 36)
 
     # First row
-    settings = { 'no_move': True, 'no_collapse': True, 'no_resize': True, 'no_close': True }
+    dpg_settings = { 'no_move': True, 'no_collapse': True, 'no_resize': True, 'no_close': True }
 
     def make_param(title, props):
         config[props['tag']] = props
@@ -634,7 +636,7 @@ def main():
     with dpg.handler_registry():
         dpg.add_key_press_handler(callback=key_press_handler)
     
-    with dpg.window(label='menu', tag='menu', no_title_bar=True, menubar=True, no_bring_to_front_on_focus=True, **settings):
+    with dpg.window(label='menu', tag='menu', no_title_bar=True, menubar=True, no_bring_to_front_on_focus=True, **dpg_settings):
         with dpg.file_dialog(tag='load', default_filename='', directory_selector=False, show=False, width=700, height=400, callback=load_callback):
             dpg.add_file_extension('.hrap')
         with dpg.file_dialog(tag='save_as', default_filename='', directory_selector=False, show=False, width=700 ,height=400, callback=save_as_callback):
@@ -669,7 +671,7 @@ def main():
         col_w = [1.0, 1.0, 0.2]
         input_table_kwargs = core.make_dict(header_row=False, resizable=False, borders_innerV=False, borders_innerH=True, policy=dpg.mvTable_SizingStretchProp)
         # Make tank window
-        with dpg.window(tag='tank', label='Tank', **settings):
+        with dpg.window(tag='tank', label='Tank', **dpg_settings):
             # diam_units = {}
             diam_steps = {'mm': 1.0, 'cm': 0.1, 'in': 1/16}
             diam_decim = {'mm': 4, 'cm': 3, 'm': 1, 'in': 3, 'ft': 5}
@@ -800,7 +802,7 @@ def main():
                 })
         
         # Make grain window
-        with dpg.window(tag='grain', label='Grain', **settings):
+        with dpg.window(tag='grain', label='Grain', **dpg_settings):
             # show_item, hide_item
             with dpg.table(**input_table_kwargs):
                 for i in range(3): dpg.add_table_column(init_width_or_weight=col_w[i])
@@ -890,7 +892,7 @@ def main():
                     dpg.add_text('Warning: mfrac normalization has occured')
         
         # Make chamber window
-        with dpg.window(tag='chamber', label='Chamber', **settings):
+        with dpg.window(tag='chamber', label='Chamber', **dpg_settings):
             with dpg.table(**input_table_kwargs):
                 for i in range(3): dpg.add_table_column(init_width_or_weight=col_w[i])
                 
@@ -911,7 +913,7 @@ def main():
                 })
         
         # Make misc window
-        with dpg.window(tag='misc', label='Export Config', **settings):
+        with dpg.window(tag='misc', label='Export Config', **dpg_settings):
             with dpg.table(**input_table_kwargs):
                 for i in range(3): dpg.add_table_column(init_width_or_weight=col_w[i])
                 
@@ -965,7 +967,7 @@ def main():
                 })
         
         # Make nozzle window
-        with dpg.window(tag='nozzle', label='Nozzle', **settings):
+        with dpg.window(tag='nozzle', label='Nozzle', **dpg_settings):
             with dpg.table(**input_table_kwargs):
                 for i in range(3): dpg.add_table_column(init_width_or_weight=col_w[i])
                 
@@ -1018,7 +1020,7 @@ def main():
         
         i, preview_win_tag = 0, 'previewL'
         # in enumerate(['previewL', 'previewR']):
-        with dpg.window(tag=preview_win_tag, label='Preview', **settings):
+        with dpg.window(tag=preview_win_tag, label='Preview', **dpg_settings):
             # dpg.add_text('Bottom Right Section')
             # dpg.add_simple_plot(label='Simple Plot', min_scale=-1.0, max_scale=1.0, height=300, tag='plot')
             # create plot
@@ -1029,7 +1031,7 @@ def main():
                 dpg.add_plot_axis(dpg.mvYAxis, label='Thrust (N)', tag=plt_tag+'_y_axis')
                 dpg.add_line_series([], [], label='Total', parent=plt_tag+'_y_axis', tag=plt_tag+'_series')
         i, preview_win_tag = 1, 'previewR'
-        with dpg.window(tag=preview_win_tag, label='Preview', **settings):
+        with dpg.window(tag=preview_win_tag, label='Preview', **dpg_settings):
             plt_tag = f'preview_{i}'
             with dpg.plot(tag=plt_tag, height=300, width=800):
                 dpg.add_plot_legend()
