@@ -895,7 +895,7 @@ def main():
                 for i in range(3): dpg.add_table_column(init_width_or_weight=col_w[i])
                 
                 make_param('Volume', {
-                    'type': float, units: 'cc',
+                    'type': float, 'units': 'cc',
                     'tag': 'cmbr_V0', 'direct': True,
                     'min': 0.0,
                     'step': 1E-4,
