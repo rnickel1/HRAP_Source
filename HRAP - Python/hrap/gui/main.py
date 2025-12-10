@@ -329,6 +329,11 @@ def recompile_motor():
     man_call_tnk_T()
     print('tnk T lims', config['tnk_T']['min'], config['tnk_T']['max'])
 
+# Helper to mark sim for re-run when high-level parmaters like time step are changed that aren't automatically checked i.e. those not belonging to x or s and without other GUI logic
+def make_update_due():
+    global upd_due
+    upd_due = True
+
 def calculate_m_Cg():
     dry_m, dry_cg, tnk_ID, ox_pos, grn_pos = [get_param(k) for k in ['dry_m', 'dry_cg', 'tnk_D', 'ox_pos', 'grn_pos']]
     T_ox, m_ox_vap, m_ox_liq, rho_ox_vap, rho_ox_liq, cmbr_m_g, grn_A = [xstack[:,method['xmap'][k]] for k in ['tnk_T', 'tnk_m_ox_vap', 'tnk_m_ox_liq', 'tnk_rho_ox_vap', 'tnk_rho_ox_liq', 'cmbr_m_g', 'grn_A']]
@@ -503,7 +508,8 @@ def main():
         set_whxy('grain',   vw // 2, vh // 3 - mh, vw // 2, mh         )
         set_whxy('chamber', vw // 2, vh // 6,      0,       vh // 3    )
         set_whxy('misc',    vw // 2, vh // 6,      0,       vh // 2)
-        set_whxy('nozzle',  vw // 2, vh // 3,      vw // 2, vh // 3    )
+        set_whxy('nozzle',  vw // 2, vh // 6,      vw // 2, vh // 3    )
+        set_whxy('numerics',vw // 2, vh // 6,      vw // 2, vh // 2    )
         set_whxy('previewL', vw // 2, vh // 3,     0,       2 * vh // 3)
         set_whxy('previewR', vw // 2, vh // 3,     vw // 2, 2 * vh // 3)
 
@@ -721,7 +727,7 @@ def main():
                 make_param('Injector Diameter', {
                     'type': float, 'units': 'mm',
                     'tag': 'tnk_inj_D',
-                    'min': 1E-3,
+                    'min': 1E-4,
                     'default': 0.5 * _in,
                     'step': 1E-3,
                     'decimal': 6,
@@ -986,7 +992,7 @@ def main():
                     'step': 1E-2,
                     'decimal': 3,
                 })
-                make_param('Throat Diameter [m]', {
+                make_param('Throat Diameter', {
                     'type': float, 'units': 'mm',
                     'tag': 'noz_thrt',
                     'key': 'thrt',
@@ -1016,6 +1022,31 @@ def main():
                     'man_call': man_call_noz_ER,
                 })
             # TODO: atm pressure, button to optimize (based on ss, mid liq?)!
+        
+        # Make simulator config window
+        with dpg.window(tag='numerics', label='Numerics', **dpg_settings):
+            with dpg.table(**input_table_kwargs):
+                for i in range(3): dpg.add_table_column(init_width_or_weight=col_w[i])
+                
+                make_param('Run time [s]', {
+                    'type': float,
+                    'tag': 'sim_T',
+                    'min': 0.1, 'max': 30.0,
+                    'default': 10.0,
+                    'step': 1E0,
+                    'decimal': 2,
+                    'man_call': make_update_due,
+                })
+                make_param('Time step [s]', {
+                    'type': float,
+                    'tag': 'sim_dt',
+                    'min': 1E-4, 'max': 1E-2,
+                    'default': 1E-3,
+                    'step': 1E-3,
+                    'decimal': 5,
+                    'man_call': make_update_due,
+                })
+                # TODO: time stepping scheme selector
         
         i, preview_win_tag = 0, 'previewL'
         # in enumerate(['previewL', 'previewR']):
@@ -1069,9 +1100,9 @@ def main():
             upd_due = False
             upd_wall_t = wall_t
         
-            T = 10.0
+            # T = 10.0
             t10 = time.time()
-            t, _, xstack = fire_engine(s, x, dt=1E-3, T=T)
+            t, _, xstack = fire_engine(s, x, dt=dpg.get_value('sim_dt'), T=dpg.get_value('sim_T'))
             jax.block_until_ready(xstack)
             xstack = np.copy(xstack)
             # tnk, grn, cmbr, noz = _unpack_engine(s, xstack)
