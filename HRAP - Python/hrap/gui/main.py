@@ -54,6 +54,11 @@ get_sat_props, get_Pv_loss = None, None
 
 N_fuel = 3
 
+time_steppers = {
+    'Forward Euler': core.step_fe,
+    'Heun': core.step_heun,
+}
+
 def clamped_param(val, props):
     if 'min' in props and val < props['min']:
         return [props['min']]*2
@@ -290,8 +295,7 @@ def setup_motor(tnk_inj_vap_model, tnk_inj_liq_model, chem_interp_k, chem_interp
     # direct_x_tags = [tag in direct_tags if tag in method['xmap']]
 
     fire_engine = core.make_integrator(
-        # core.step_rk4,
-        core.step_fe,
+        time_steppers[dpg.get_value('sim_time_stepper')],
         method,
     )
     
@@ -994,9 +998,9 @@ def main():
                 })
                 make_param('Throat Diameter', {
                     'type': float, 'units': 'mm',
-                    'tag': 'noz_thrt',
+                    'tag': 'noz_thrt', 'direct': True,
                     'key': 'thrt',
-                    'min': 0.001,
+                    'min': 0.0001,
                     'default': 1.75 * _in,
                     'step': 1E-3,
                     'decimal': 3,
@@ -1045,6 +1049,13 @@ def main():
                     'step': 1E-3,
                     'decimal': 5,
                     'man_call': make_update_due,
+                })
+                make_param('Time Stepping Scheme', {
+                    'type': list,
+                    'tag': 'sim_time_stepper',
+                    'items': list(time_steppers.keys()),
+                    'default': 'Forward Euler',
+                    'man_call': recompile_motor,
                 })
                 # TODO: time stepping scheme selector
         
