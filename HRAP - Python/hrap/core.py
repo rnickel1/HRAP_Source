@@ -148,9 +148,18 @@ def step_fe(
     s, x, xmap, diff_xmap, diff_dmap,
     dt, fderiv,
 ):
-    x = fderiv(s, x, xmap)
-    
     return x.at[diff_xmap].add(dt*x[diff_dmap])
+
+def step_heun(
+    s, x, xmap, diff_xmap, diff_dmap,
+    dt, fderiv,
+):
+    # Derivative at current state is provided, need to evaluate at FE point then average updates
+    dx = x[diff_dmap]
+    x = fderiv(s, x.at[diff_xmap].add(dt*dx), xmap)
+    dxp = x[diff_dmap]
+    
+    return x.at[diff_xmap].add(dt*(dxp-dx)/2)
 
 def step_rk(
     s, x, xmap, diff_xmap, diff_dmap,
@@ -158,8 +167,9 @@ def step_rk(
     NRK, rka, rkb, rkc,
 ):
     resx = jnp.zeros_like(x[diff_xmap])
-    for INTRK in range(NRK):        
-        x = fderiv(s, x, xmap)
+    for INTRK in range(NRK):
+        if INTRK > 0:
+            x = fderiv(s, x, xmap)
         
         resx = rka[INTRK]*resx + dt*x[diff_dmap]
         
@@ -211,12 +221,12 @@ def make_integrator(fstep, method):
     def step_t(i, args):
         dt, s, x, xmap, xstack = args
         
+        x = fderiv(s, x, xmap)
+        xstack = xstack.at[i, :].set(x) # Store last state and its derivatives
+        
         x = fstep(s, x, xmap, method['diff_xmap'], method['diff_dmap'], dt, fderiv)
-
         for fupdate in method['fupdates']:
             x = fupdate(s, x, xmap)
-    
-        xstack = xstack.at[i, :].set(x)
 
         return dt, s, x, xmap, xstack
 
