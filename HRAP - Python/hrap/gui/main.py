@@ -1054,7 +1054,7 @@ def main():
                     'type': list,
                     'tag': 'sim_time_stepper',
                     'items': list(time_steppers.keys()),
-                    'default': 'Forward Euler',
+                    'default': 'Heun',
                     'man_call': recompile_motor,
                 })
                 # TODO: time stepping scheme selector
