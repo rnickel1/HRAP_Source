@@ -9,7 +9,7 @@ exclude = ["hrap/gui/frontend/node_modules"] # TODO: want to include dist but re
 
 [project]
 name = "hrap"
-version = "0.1.6"
+version = "0.1.7"
 
 # dynamic = ["version"]
 # TODO: option that depends on jax[gpu] for linux
