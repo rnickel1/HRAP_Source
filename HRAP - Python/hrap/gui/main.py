@@ -804,7 +804,7 @@ def main():
                     'tag': 'tnk_fill',
                     # 'key': 'm_ox',
                     'min': 0.0, 'max': 100.0,
-                    'default': 66.2,
+                    'default': 10.5,
                     'step': 5E-1,
                     'decimal': 1,
                     'man_call': man_call_tnk_fill,
