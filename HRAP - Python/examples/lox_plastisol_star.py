@@ -56,7 +56,7 @@ tnk = make_sat_tank(
     get_sat_lox_props,
     V = (np.pi/4 * 4.75**2 * _in**2) * (4.0 * _ft),
     inj_CdA = 0.22 * (np.pi/4 * 0.5**2 * _in**2),
-    m_ox = 3.0, # TODO: init limit
+    m_ox = 2.0,
     T = 125,
 )
 
