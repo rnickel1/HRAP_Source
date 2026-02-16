@@ -132,14 +132,14 @@ emp_tnk = make_sat_tank(
     get_sat_nos_props,
     V = (np.pi/4 * 4.75**2 * _in**2) * (7.0 * _ft),
     inj_CdA= 0.22 * (np.pi/4 * 0.5**2 * _in**2),
-    m_ox=12.6, # TODO: init limit
+    m_ox=2,
     T = 294,
 )
 cp_tnk = make_sat_tank(
     fluid.bake_sat_coolprop('NitrousOxide', np.linspace(183.0, 309.0, 20)),
     V = (np.pi/4 * 4.75**2 * _in**2) * (7.0 * _ft),
     inj_CdA= 0.22 * (np.pi/4 * 0.5**2 * _in**2),
-    m_ox=12.6, # TODO: init limit
+    m_ox=2,
     T = 294,
 )
 
@@ -299,13 +299,6 @@ for grn_name, linestyle, grn in [('constOF', '-', constOF_grn), ('shiftOF', '--'
 # axs[8].legend()
 
 
-# # Write thrust validation, big hybrid 7-26-23
-# daq = np.genfromtxt(hrap_root/'resources'/'validation'/'hybrid_fire_7_26_23.csv', delimiter=',', names=True, dtype=float, encoding='utf-8', deletechars='')
-# axs[0].plot(daq['time'], daq['thrust']*_lbf, label='daq')
-# axs[0].legend()
-# # axs[0].plot()
-
-# Plot nozzle flow rate
 
 # Save plot
 fig.tight_layout()
