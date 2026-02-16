@@ -54,7 +54,7 @@ tnk = make_sat_tank(
     get_sat_nos_props,
     V = (np.pi/4 * 4.75**2 * _in**2) * (7.0 * _ft),
     inj_CdA = 0.22 * (np.pi/4 * 0.5**2 * _in**2),
-    m_ox = 12.6, # TODO: init limit
+    m_ox = 2,
     T = 294,
 )
 
@@ -209,11 +209,6 @@ axs[8].plot(np.linspace(0.0, T, N_t), cmbr['V0'] - grn['V'], label='Empty cmbr V
 # axs[8].plot(np.linspace(0.0, T, N_t), grn['Vdot']/(cmbr['V0'] - grn['V']), label='Pc dot, V comb')
 # Pc*(mdot_g/m_g - dV/V)
 axs[8].legend()
-
-# Plot thrust validation, big hybrid 7-26-23
-daq = np.genfromtxt(hrap_root/'resources'/'validation'/'hybrid_fire_7_26_23.csv', delimiter=',', names=True, dtype=float, encoding='utf-8', deletechars='')
-axs[0].plot(daq['time'], daq['thrust']*_lbf, label='daq')
-axs[0].legend()
 
 
 
