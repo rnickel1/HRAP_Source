@@ -1,5 +1,5 @@
-# Purpose: Demonstrate API for arbitrary saturated fluids and non-circular ports with a LOX plastisol hybrid star grain example
-# Authors: Thomas A. Scott
+# Purpose: Demonstrate arbitrary grain port analysis feasability
+# Authors: Timon Jacquemin
 
 import scipy
 import numpy as np
@@ -19,22 +19,22 @@ from hrap.units   import _in, _ft, _lbf, _atm
 
 jax.config.update("jax_enable_x64", True)
 hrap_root = Path(imp_files('hrap'))
-file_prefix = 'lox_plastisol_star'
+file_prefix = 'Nos-Paraffin-Arbitrary'
 
 
 
 print('Building combustion chemistry table...')
-plastisol = chem.make_basic_reactant(
-    formula = 'Plastisol-362',
-    composition = { 'C': 7.200, 'H': 10.82, 'O': 1.14, 'Cl': 0.669 },
-    M = 140.86, # kg/kmol
+paraffin_vybar = chem.make_basic_reactant(
+    formula = 'paraffin_vybar',
+    composition = { 'C': 71.02, 'H': 145.83 },
+    M = 422.8, # kg/kmol
     T0 = 298.15, # K
-    h0 = -2.6535755e7, # J/kmol
+    h0 = -9.25e6, # J/kmol
 )
-comb = chem.ChemSolver([hrap_root/'thermo.dat', plastisol])
-chem_Pc, chem_OF = np.linspace(10*_atm, 50*_atm, 10), np.linspace(1.0, 10.0, 20)
+comb = chem.ChemSolver([hrap_root/'thermo.dat', paraffin_vybar])
+chem_Pc, chem_OF = np.linspace(10*_atm, 50*_atm, 10), np.linspace(1.0, 15.0, 25)
 chem_k, chem_M, chem_T = [np.zeros((chem_Pc.size, chem_OF.size)) for i in range(3)]
-ox, fu_1, fu_2 = 'O2(L)', 'Plastisol-362', 'AL(cr)'
+ox, fu_1, fu_2 = 'N2O', 'paraffin_vybar', 'AL(cr)'
 mfrac_al = 0.2
 internal_state = None
 for j, OF in enumerate(chem_OF):
@@ -44,84 +44,135 @@ for j, OF in enumerate(chem_OF):
         flame, internal_state = comb.solve(Pc, {ox: o, fu_1: (1-mfrac_al)*(1-o), fu_2: mfrac_al*(1-o)}, max_iters=150, internal_state=internal_state)
         chem_k[i,j], chem_M[i,j], chem_T[i,j] = flame.gamma, flame.M, flame.T
 
-print('Baking LOX saturated property curves...')
-get_sat_lox_props = fluid.bake_sat_coolprop('Oxygen', np.linspace(75, 150, 20))
+print('Baking N2O saturated property curves...')
+get_sat_nos_props = fluid.bake_sat_coolprop('NitrousOxide', np.linspace(240, 305, 25))
+
 
 print('Baking grain geometry')
 
-# Multi-port geometry, note the ports cannot initially overlap
-#   star is specified using inner diameter, tip diameter, and number of tips
-port_ID, port_TD, grn_OD, N_tip = 0.5*_in, 0.8*_in, 4.5*_in, 5
-dupe_r, dupe_N = 0.75*_in, 3 # How far center of ports are from center of grain and how many
-one_port_xy = make_star_vertices(port_ID, port_TD, N_tip)
-ports_xy = [one_port_xy + dupe_r*np.array([np.cos(th), np.sin(th)])[None,:] for th in np.linspace(0.0, 2*np.pi, dupe_N, endpoint=False)]
+grain_diameter=0.023
 
-# Alternative (uncomment to use) single port star
-#port_ID, port_TD, grn_OD, N_tip = 0.053, 0.075, 0.1, 4
-#ports_xy = [make_star_vertices(port_ID, port_TD, N_tip)]
+distances,perimeters,contours,grn_A0 = bake_arbitrary_d2a(
+    'C:/Users/timon/OneDrive/Desktop/Grain_shapes/Grain2.png',
+    grain_diameter=grain_diameter, 
+    n_step=150, 
+    n_visu=50
+    )
 
-# Bake into regress distance to exposed arc area curve fit
-grn_A0, grn_d, grn_d2a, all_contours = bake_d2a(grn_OD, ports_xy, Nx=64, Nd=32)
-d2a_curve = interpax.Interpolator1D(grn_d, grn_d2a, method='akima')
+d2a_curve = interpax.Interpolator1D(distances, perimeters, method='akima')
 
-fig, axs = plt.subplots(nrows=1, ncols=2, figsize=(14,7))
-axs = np.array(axs).ravel()
-Nd_plt = 128
-plt_ports_xy = [np.append(port_xy, [port_xy[0,:]], axis=0) for port_xy in ports_xy]
+
+
+# Graph things
+
+# Create output figures
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
+
+# Color vector
+colors = cm.viridis(np.linspace(0, 1, len(perimeters)))
+
+# Contour Plot
+ax1.set_title("Grain regression")
+ax1.set_aspect('equal')
+ax1.set_xlabel("X (m)")
+ax1.set_ylabel("Y (m)")
+
+for cont in contours:
+    ax1.plot(cont[0], cont[1], linewidth=2, color=colors[cont[2]], alpha=0.8)
+       
+# Show grain exterior diameter
+grain_ext = plt.Circle((grain_diameter/2, grain_diameter/2), grain_diameter/2,color='black', fill=False, linewidth=4, zorder=10)
+ax1.add_patch(grain_ext)
+
+# Data plot
+# Colorbar (matches contour plot)
+sm = plt.cm.ScalarMappable(cmap=cm.viridis, norm=plt.Normalize(vmin=0, vmax=grain_diameter))
+cbar = plt.colorbar(sm, ax=ax2)
+cbar.set_label('Distances (m)')
+
+# Perimeter curve with matching colors
+for i in range(len(distances) - 1):
+    ax2.plot(distances[i:i+2], perimeters[i:i+2], color=colors[i], linewidth=3)    
+
+ax2.plot(distances, perimeters, 'k.', markersize=5, alpha=0.5 , label='Grain') # points noirs discrets
+
+ax2.set_title("Surface evolution ($A_b$)")
+ax2.set_xlabel("Regressed distance (m)")
+ax2.set_ylabel("Perimeters (m)")
+ax2.grid(True, linestyle='--', alpha=0.6)
+# Set y minimum to 0
+ax2.set_ylim(bottom=0)
+
+Nd_plt = 100
 plt_t = np.linspace(0.0, 2*np.pi, 64)
-plt_d = np.arange(Nd_plt)/(Nd_plt-1)*grn_d[-1]
-eq_r = grn_d2a[0]/(2*np.pi)
-eq_d = np.arange(Nd_plt)/(Nd_plt-1)*(grn_OD/2 - eq_r)
+plt_d = np.arange(Nd_plt)/(Nd_plt-1)*distances[-1]
+eq_r = perimeters[0]/(2*np.pi)
+eq_d = np.arange(Nd_plt)/(Nd_plt-1)*(grain_diameter/2 - eq_r)
 
-for contour in all_contours:
-    axs[0].plot(contour[:,0], contour[:,1], color='black')
-axs[0].plot(np.cos(plt_t)*grn_OD/2, np.sin(plt_t)*grn_OD/2, color='black', linestyle='dashed')
-axs[0].plot(np.cos(plt_t)*eq_r, np.sin(plt_t)*eq_r, color='blue', linestyle='dashed', label='equivalent diameter')
-axs[0].legend(loc='upper right')
+ax1.plot(list(map(lambda x: x + grain_diameter/2, np.cos(plt_t)*eq_r)), list(map(lambda x: x + grain_diameter/2,  np.sin(plt_t)*eq_r)), color='blue', linestyle='dashed', label='equivalent diameter')
+ax1.legend(loc='upper right')
 
-axs[1].plot(plt_d, d2a_curve(plt_d), label='star')
-axs[1].scatter(grn_d, grn_d2a)
-axs[1].plot(np.append(eq_d, eq_d[-1]), np.append(2*np.pi*(eq_r + eq_d),0.0), label='circular w/ equivalent diameter')
-axs[1].legend(loc='upper right')
-axs[1].set_xlabel('Regressed Distance [m]')
-axs[1].set_ylabel('Exposed Arc Length [m]')
-axs[1].grid(True, linestyle='--', alpha=0.6) # Ajout de la grille
+if (eq_r < grain_diameter/2):
+    ax2.plot(np.append(eq_d, eq_d[-1]), np.append(2*np.pi*(eq_r + eq_d),0.0), color='tab:orange', label='circular w/ equivalent diameter')
+ax2.legend(loc='upper right')
+
+plt.tight_layout()
 plt.show()
 
 
 
+
+
 print('Initializing engine...')
+
+#tank
+V = (np.pi/4 * 0.0256**2) * 0.124
+T_init = 293.15 # Kelvin
+rho_liq = get_sat_nos_props(T_init)['rho_l']
+fill_level = 0.95
+m_ox = V * fill_level * rho_liq
+
 tnk = make_sat_tank(
-    get_sat_lox_props,
-    V = (np.pi/4 * 4.75**2 * _in**2) * (4.0 * _ft),
-    inj_CdA = 0.22 * (np.pi/4 * 0.5**2 * _in**2),
-    m_ox = 3.0, # TODO: init limit
-    T = 125,
+    get_sat_nos_props,
+    V = V ,
+    inj_CdA = 0.45 * (np.pi/4 * 0.001**2) * 2,
+    m_ox = m_ox,
+    T = T_init,
     inj_vap_model = StaticVar('Real Gas'),
 )
 
+
+#grain
 shape = make_arbitrary_shape(
     d2a_curve,
     A0 = grn_A0,
 )
-grn = make_constOF_grain(
+
+grn = make_shiftOF_grain(
     shape,
-    OF = 4.5,
-    OD = grn_OD,
-    L = 20.0 * _in,
-    rho = 1117.0,
+    OD = grain_diameter,
+    L = 0.035,
+    Reg = jnp.array([0.12, 0.55, 0.0]),
+    rho = 900,
 )
 
+
+#chamber
 cmbr = make_chamber(
     V0 = 0.0,
     cstar_eff = 1.0,#0.95
 )
 
+
+#nozzle
+d_throat = 0.008
+d_exit = 0.0165
+
 noz = make_cd_nozzle(
-    thrt = 1.75 * _in, # Throat diameter
-    ER = 4.99,         # Exit/throat area ratio
-    eff = 0.97,
-    C_d = 0.995,
+    thrt = d_throat, # Throat diameter
+    ER = (d_exit / d_throat)**2,         # Exit/throat area ratio
+    eff = 1.0,
+    C_d = 1.0,
 )
 
 from jax.scipy.interpolate import RegularGridInterpolator
@@ -146,7 +197,7 @@ fire_engine = core.make_integrator(
 )
 
 # Integrate the engine state
-T = 7.0
+T = 2.0
 print('Running...')
 import time
 t1 = time.time()
