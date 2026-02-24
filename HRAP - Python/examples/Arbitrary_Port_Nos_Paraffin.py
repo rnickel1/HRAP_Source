@@ -1,7 +1,5 @@
-# Purpose: Demonstrate API for arbitrary saturated fluids and non-circular ports with a LOX plastisol hybrid star grain example
-# Authors: Thomas A. Scott
-
-# https://scikit-image.org/docs/0.23.x/auto_examples/edges/plot_contours.html
+# Purpose: Demonstrate arbitrary grain port analysis feasability
+# Authors: Timon Jacquemin
 
 import scipy
 import numpy as np
@@ -21,22 +19,22 @@ from hrap.units   import _in, _ft, _lbf, _atm
 
 jax.config.update("jax_enable_x64", True)
 hrap_root = Path(imp_files('hrap'))
-file_prefix = 'nitrous_plastisol'
+file_prefix = 'Nos-Paraffin-Arbitrary'
 
 
 
 print('Building combustion chemistry table...')
-plastisol = chem.make_basic_reactant(
-    formula = 'Plastisol-362',
-    composition = { 'C': 7.200, 'H': 10.82, 'O': 1.14, 'Cl': 0.669 },
-    M = 140.86, # kg/kmol
+paraffin_vybar = chem.make_basic_reactant(
+    formula = 'paraffin_vybar',
+    composition = { 'C': 71.02, 'H': 145.83 },
+    M = 422.8, # kg/kmol
     T0 = 298.15, # K
-    h0 = -2.6535755e7, # J/kmol
+    h0 = -9.25e6, # J/kmol
 )
-comb = chem.ChemSolver([hrap_root/'ssts_thermochem.txt', plastisol])
-chem_Pc, chem_OF = np.linspace(10*_atm, 50*_atm, 10), np.linspace(1.0, 10.0, 20)
+comb = chem.ChemSolver([hrap_root/'thermo.dat', paraffin_vybar])
+chem_Pc, chem_OF = np.linspace(10*_atm, 50*_atm, 10), np.linspace(1.0, 15.0, 25)
 chem_k, chem_M, chem_T = [np.zeros((chem_Pc.size, chem_OF.size)) for i in range(3)]
-ox, fu_1, fu_2 = 'O2(L)', 'Plastisol-362', 'AL(cr)'
+ox, fu_1, fu_2 = 'N2O', 'paraffin_vybar', 'AL(cr)'
 mfrac_al = 0.2
 internal_state = None
 for j, OF in enumerate(chem_OF):
@@ -46,46 +44,135 @@ for j, OF in enumerate(chem_OF):
         flame, internal_state = comb.solve(Pc, {ox: o, fu_1: (1-mfrac_al)*(1-o), fu_2: mfrac_al*(1-o)}, max_iters=150, internal_state=internal_state)
         chem_k[i,j], chem_M[i,j], chem_T[i,j] = flame.gamma, flame.M, flame.T
 
-print('Baking LOX saturated property curves...')
-get_sat_lox_props = fluid.bake_sat_coolprop('Oxygen', np.linspace(75.0, 150.0, 20))
+print('Baking N2O saturated property curves...')
+get_sat_nos_props = fluid.bake_sat_coolprop('NitrousOxide', np.linspace(240, 305, 25))
+
+
+print('Baking grain geometry')
+
+grain_diameter=0.023
+
+distances,perimeters,contours,grn_A0 = bake_arbitrary_d2a(
+    hrap_root/'..'/'examples'/'Grain.png',
+    grain_diameter=grain_diameter, 
+    n_step=150, 
+    n_visu=50
+    )
+
+d2a_curve = interpax.Interpolator1D(distances, perimeters, method='akima')
+
+
+
+# Graph things
+
+# Create output figures
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
+
+# Color vector
+colors = cm.viridis(np.linspace(0, 1, len(perimeters)))
+
+# Contour Plot
+ax1.set_title("Grain regression")
+ax1.set_aspect('equal')
+ax1.set_xlabel("X (m)")
+ax1.set_ylabel("Y (m)")
+
+for cont in contours:
+    ax1.plot(cont[0], cont[1], linewidth=2, color=colors[cont[2]], alpha=0.8)
+       
+# Show grain exterior diameter
+grain_ext = plt.Circle((grain_diameter/2, grain_diameter/2), grain_diameter/2,color='black', fill=False, linewidth=4, zorder=10)
+ax1.add_patch(grain_ext)
+
+# Data plot
+# Colorbar (matches contour plot)
+sm = plt.cm.ScalarMappable(cmap=cm.viridis, norm=plt.Normalize(vmin=0, vmax=grain_diameter))
+cbar = plt.colorbar(sm, ax=ax2)
+cbar.set_label('Distances (m)')
+
+# Perimeter curve with matching colors
+for i in range(len(distances) - 1):
+    ax2.plot(distances[i:i+2], perimeters[i:i+2], color=colors[i], linewidth=3)    
+
+ax2.plot(distances, perimeters, 'k.', markersize=5, alpha=0.5 , label='Grain') # points noirs discrets
+
+ax2.set_title("Surface evolution ($A_b$)")
+ax2.set_xlabel("Regressed distance (m)")
+ax2.set_ylabel("Perimeters (m)")
+ax2.grid(True, linestyle='--', alpha=0.6)
+# Set y minimum to 0
+ax2.set_ylim(bottom=0)
+
+Nd_plt = 100
+plt_t = np.linspace(0.0, 2*np.pi, 64)
+plt_d = np.arange(Nd_plt)/(Nd_plt-1)*distances[-1]
+eq_r = perimeters[0]/(2*np.pi)
+eq_d = np.arange(Nd_plt)/(Nd_plt-1)*(grain_diameter/2 - eq_r)
+
+ax1.plot(list(map(lambda x: x + grain_diameter/2, np.cos(plt_t)*eq_r)), list(map(lambda x: x + grain_diameter/2,  np.sin(plt_t)*eq_r)), color='blue', linestyle='dashed', label='equivalent diameter')
+ax1.legend(loc='upper right')
+
+if (eq_r < grain_diameter/2):
+    ax2.plot(np.append(eq_d, eq_d[-1]), np.append(2*np.pi*(eq_r + eq_d),0.0), color='tab:orange', label='circular w/ equivalent diameter')
+ax2.legend(loc='upper right')
+
+plt.tight_layout()
+plt.show()
+
+
 
 
 
 print('Initializing engine...')
+
+#tank
+V = (np.pi/4 * 0.0256**2) * 0.124
+T_init = 293.15 # Kelvin
+rho_liq = get_sat_nos_props(T_init)['rho_l']
+fill_level = 0.95
+m_ox = V * fill_level * rho_liq
+
 tnk = make_sat_tank(
-    get_sat_lox_props,
-    V = (np.pi/4 * 4.75**2 * _in**2) * (4.0 * _ft),
-    inj_CdA = 0.22 * (np.pi/4 * 0.5**2 * _in**2),
-    m_ox = 3.0, # TODO: init limit
-    T = 125,
+    get_sat_nos_props,
+    V = V ,
+    inj_CdA = 0.45 * (np.pi/4 * 0.001**2) * 2,
+    m_ox = m_ox,
+    T = T_init,
+    inj_vap_model = StaticVar('Real Gas'),
 )
 
-shape = make_circle_shape(
-    ID = 2.5 * _in,
+
+#grain
+shape = make_arbitrary_shape(
+    d2a_curve,
+    A0 = grn_A0,
 )
-grn = make_constOF_grain(
+
+grn = make_shiftOF_grain(
     shape,
-    OF = 4.5,
-    OD = grn_OD,
-    L = 20.0 * _in,
-    rho = 1117.0,
+    OD = grain_diameter,
+    L = 0.035,
+    Reg = jnp.array([0.12, 0.55, 0.0]),
+    rho = 900,
 )
 
-prepost_ID = 4.25*_in                              # Inner diameter of pre and post combustion chambers (m)
-prepost_V  = (3.5+1.7)*_in * np.pi/4*prepost_ID**2 # Empty volume of pre and post combustion chambers (m^3)
-rings_V    = 3 * (1/8*_in) * np.pi*(2.5/2 * _in)**2  # Empty volume of phenolic rings (m^3)
-fuel_V     = (30.0 * _in) * np.pi*(4.5/2 * _in)**2   # Empty volume of grain footprint (m^3)
+
+#chamber
 cmbr = make_chamber(
-    # V0 =  prepost_V + rings_V + fuel_V,            # Volume of chamber w/o grain (m^3)
-    V0 = 0.0, # Sim can be a bit unstable with this and incompressible injetor
+    V0 = 0.0,
     cstar_eff = 1.0,#0.95
 )
 
+
+#nozzle
+d_throat = 0.008
+d_exit = 0.0165
+
 noz = make_cd_nozzle(
-    thrt = 1.75 * _in, # Throat diameter
-    ER = 4.99,         # Exit/throat area ratio
-    eff = 0.97,
-    C_d = 0.995,
+    thrt = d_throat, # Throat diameter
+    ER = (d_exit / d_throat)**2,         # Exit/throat area ratio
+    eff = 1.0,
+    C_d = 1.0,
 )
 
 from jax.scipy.interpolate import RegularGridInterpolator
@@ -110,7 +197,7 @@ fire_engine = core.make_integrator(
 )
 
 # Integrate the engine state
-T = 7.0
+T = 2.0
 print('Running...')
 import time
 t1 = time.time()
