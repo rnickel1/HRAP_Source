@@ -129,6 +129,7 @@ tnk, grn, cmbr, noz = core.unpack_engine(s, xstack, method)
 results_path = Path('./results')
 results_path.mkdir(parents=True, exist_ok=True)
 
+# NOTE: dry mass and Cg missing here, supply to get a useful export
 OD, L = 3*_in, 1.2
 core.export_rse(
     results_path/(file_prefix+'.rse'),
