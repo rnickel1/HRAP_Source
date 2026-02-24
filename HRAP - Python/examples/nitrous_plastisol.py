@@ -52,36 +52,31 @@ get_sat_nos_props = fluid.bake_sat_coolprop('NitrousOxide', np.linspace(183.0, 3
 print('Initializing engine...')
 tnk = make_sat_tank(
     get_sat_nos_props,
-    V = (np.pi/4 * 4.75**2 * _in**2) * (7.0 * _ft),
-    inj_CdA = 0.22 * (np.pi/4 * 0.5**2 * _in**2),
+    V = (np.pi/4 * 2.75**2 * _in**2) * (0.75),
+    inj_CdA = 0.22 * (np.pi/4 * 8E-3**2),
     m_ox = 2,
     T = 294,
 )
 
 shape = make_circle_shape(
-    ID = 2.5 * _in,
+    ID = 1.0 * _in,
 )
 grn = make_constOF_grain(
     shape,
     OF = 3.5,
-    OD = 4.5 * _in,
-    L = 30.0 * _in,
+    OD = 2.5 * _in,
+    L = 12.0 * _in,
     rho = 1117.0,
 )
 
-prepost_ID = 4.25*_in                               # Inner diameter of pre and post combustion chambers (m)
-prepost_V  = (3.5+1.7)*_in * np.pi/4*prepost_ID**2  # Empty volume of pre and post combustion chambers (m^3)
-rings_V    = 3 * (1/8*_in) * np.pi*(2.5/2 * _in)**2 # Empty volume of phenolic rings (m^3)
-fuel_V     = (30.0 * _in) * np.pi*(4.5/2 * _in)**2  # Empty volume of grain footprint (m^3)
 cmbr = make_chamber(
-    V0 = prepost_V + rings_V + fuel_V, # Volume of chamber w/o grain (m^3)
-    # V0 = 0.0, # Note: sim can be a bit unstable with this and incompressible injetor
-    cstar_eff = 1.0,#0.95
+    V0 = 0.0, # Note: sim can be a bit unstable with this and incompressible injetor
+    cstar_eff = 0.9,
 )
 
 noz = make_cd_nozzle(
-    thrt = 1.75 * _in, # Throat diameter
-    ER = 4.99,         # Exit/throat area ratio
+    thrt = 0.8 * _in, # Throat diameter
+    ER = 5.0,         # Exit/throat area ratio
     eff = 0.97,
     C_d = 0.995,
 )
@@ -108,7 +103,7 @@ fire_engine = core.make_integrator(
 )
 
 # Integrate the engine state
-T = 12.0
+T = 6.0
 print('Running...')
 import time
 t1 = time.time()
@@ -134,7 +129,7 @@ tnk, grn, cmbr, noz = core.unpack_engine(s, xstack, method)
 results_path = Path('./results')
 results_path.mkdir(parents=True, exist_ok=True)
 
-OD, L = 5*_in, 10*_ft
+OD, L = 3*_in, 1.2
 core.export_rse(
     results_path/(file_prefix+'.rse'),
     t, noz['thrust'].ravel(), noz['mdot'].ravel(), t*0, t*0,

@@ -266,7 +266,6 @@ def setup_motor(tnk_inj_vap_model, tnk_inj_liq_model, chem_interp_k, chem_interp
         inj_vap_model = core.StaticVar(tnk_inj_vap_model),
         inj_liq_model = core.StaticVar(tnk_inj_liq_model),
     )
-    # print('INJ TEST', 0.5 * (np.pi/4 * 0.5**2 * _in**2))
 
     shape = make_circle_shape(
         ID = 2.5 * _in,
@@ -291,8 +290,6 @@ def setup_motor(tnk_inj_vap_model, tnk_inj_liq_model, chem_interp_k, chem_interp
         chem_interp_k=chem_interp_k, chem_interp_M=chem_interp_M, chem_interp_T=chem_interp_T,
         Pa=101e3,
     )
-    # direct_s_tags = [tag in direct_tags if tag in s]
-    # direct_x_tags = [tag in direct_tags if tag in method['xmap']]
 
     fire_engine = core.make_integrator(
         time_steppers[dpg.get_value('sim_time_stepper')],
@@ -535,7 +532,6 @@ def main():
             with dpg.table_row():
                 dpg.add_text(title)
                 dpg.add_input_float(format=f'%.{decimal}f', tag=props['tag'], callback=callback, width=-1)
-                # dpg.add_input_float(label=title, format=f'%.{decimal}f', tag=props['tag'], callback=callback)
                 # dpg.add_input_float(label=title, step=props['step'], format=f'%.{decimal}f', tag=props['tag'], callback=callback)
                 
                 # Add unit selector, units are applied before running the motor
@@ -601,7 +597,6 @@ def main():
         active_file = Path(app_data['file_path_name'])
         print('saving as', active_file)
         save_config(active_file)
-        # print('save as', app_data)
     
     def export_rse_callback(sender, app_data):
         thrust, prop_mdot = [xstack[:,method['xmap'][k]] for k in ['noz_thrust', 'noz_mdot']]
@@ -691,7 +686,7 @@ def main():
                     'type': float, 'units': 'mm',
                     'tag': 'tnk_D',
                     'min': 0.0,
-                    'default': 4.75 * _in,
+                    'default': 2.75 * _in,
                     'step': diam_steps,
                     'decimal': 4,
                     'man_call': man_call_tnk_D,
@@ -700,7 +695,7 @@ def main():
                     'type': float, 'units': 'm',
                     'tag': 'tnk_L',
                     'min': 0.0,
-                    'default': 7 * _ft,
+                    'default': 0.75,
                     # 'step': 1E-2,
                     'decimal': 4,
                     'man_call': man_call_tnk_L,
@@ -709,7 +704,6 @@ def main():
                     'type': float, 'units': 'cc',
                     'tag': 'tnk_V', 'direct': True,
                     'min': 0.0,
-                    # 'default': (np.pi/4 * 5.0**2 * _in**2) * (10 * _ft),
                     'step': 1E-4,
                     'decimal': 6,
                     'man_call': man_call_tnk_V,
@@ -732,7 +726,7 @@ def main():
                     'type': float, 'units': 'mm',
                     'tag': 'tnk_inj_D',
                     'min': 1E-4,
-                    'default': 0.5 * _in,
+                    'default': 8E-3,
                     'step': 1E-3,
                     'decimal': 6,
                     'man_call': man_call_tnk_inj_D,
@@ -750,7 +744,6 @@ def main():
                     'type': float, 'units': 'mm2',
                     'tag': 'tnk_inj_CdA', 'direct': True,
                     'min': 0.0, # Keep positive, diam limits
-                    # 'default': 0.5 * (np.pi/4 * 0.5**2 * _in**2),
                     'step': 1E-6,
                     'decimal': 6,
                     'man_call': man_call_tnk_inj_CdA,
@@ -782,10 +775,6 @@ def main():
                 make_param('Oxidizer Pressure', {
                     'type': float, 'units': 'kPa',
                     'tag': 'tnk_P',
-                    # 'key': 'P',
-                    # 'min': 1.0,
-                    # 'max': 1E+3,
-                    # 'default': 293.0,
                     'step': 10.0,
                     'decimal': 0,
                     'man_call': man_call_tnk_P,
@@ -793,8 +782,6 @@ def main():
                 make_param('Oxidizer Mass', {
                     'type': float, 'units': 'kg',
                     'tag': 'tnk_m_ox', 'direct': True, # TODO ..., actually change
-                    # 'min': 1E-3, 'max': 1E+3,
-                    # 'default': 14.0,
                     'step': 1E-1,
                     'decimal': 3,
                     'man_call': man_call_tnk_m_ox,
@@ -804,7 +791,7 @@ def main():
                     'tag': 'tnk_fill',
                     # 'key': 'm_ox',
                     'min': 0.0, 'max': 100.0,
-                    'default': 10.5,
+                    'default': 90,
                     'step': 5E-1,
                     'decimal': 1,
                     'man_call': man_call_tnk_fill,
@@ -831,7 +818,7 @@ def main():
                     'type': float, 'units': 'mm',
                     'tag': 'grn_shape_ID', 'direct': True,
                     'min': 0.001,
-                    'default': 2.5 * _in,
+                    'default': 1.0 * _in,
                     'step': 1E-3,
                     'decimal': 4,
                 })
@@ -839,7 +826,7 @@ def main():
                     'type': float, 'units': 'mm',
                     'tag': 'grn_OD', 'direct': True,
                     'min': 0.001,
-                    'default': 4.5 * _in,
+                    'default': 2.5 * _in,
                     'step': 1E-3,
                     'decimal': 4,
                 })
@@ -847,7 +834,7 @@ def main():
                     'type': float, 'units': 'mm',
                     'tag': 'grn_L', 'direct': True,
                     'min': 0.001,
-                    'default': 30.0 * _in,
+                    'default': 12.0 * _in,
                     'step': 1E-2,
                     'decimal': 4,
                 })
@@ -915,7 +902,7 @@ def main():
                 make_param('C* Efficiency', {
                     'type': float,
                     'tag': 'cmbr_cstar_eff', 'direct': True,
-                    'min': 0.01, 'max': 1.0,
+                    'min': 0.01, 'max': 0.9,
                     'default': 1.0,
                     'step': 1E-2,
                     'decimal': 2,
@@ -930,7 +917,7 @@ def main():
                     'type': float, 'units': 'mm',
                     'tag': 'dry_OD',
                     'min': 0.0,
-                    'default': 5.0*_in,
+                    'default': 3.0*_in,
                     'step': 1E-1,
                     'decimal': 6,
                 })
@@ -938,7 +925,7 @@ def main():
                     'type': float, 'units': 'mm',
                     'tag': 'dry_L',
                     'min': 0.0,
-                    'default': 127.78*_in,
+                    'default': 1.2,
                     'step': 1E-1,
                     'decimal': 6,
                 })
@@ -946,7 +933,7 @@ def main():
                     'type': float, 'units': 'kg',
                     'tag': 'dry_m',
                     'min': 0.0,
-                    'default': 15.69,
+                    'default': 5.0,
                     'step': 1E-1,
                     'decimal': 6,
                 })
@@ -954,7 +941,7 @@ def main():
                     'type': float, 'units': 'mm',
                     'tag': 'dry_cg',
                     'min': 0.0,
-                    'default': 1.79,
+                    'default': 0.5,
                     'step': 1E-2,
                     'decimal': 6,
                 })
@@ -970,7 +957,7 @@ def main():
                     'type': float, 'units': 'mm',
                     'tag': 'grn_pos',
                     'min': 0.0,
-                    'default': 7.0*_ft + 4.17*_in,
+                    'default': 0.8,
                     'step': 1E-2,
                     'decimal': 6,
                 })
@@ -1001,7 +988,7 @@ def main():
                     'tag': 'noz_thrt', 'direct': True,
                     'key': 'thrt',
                     'min': 0.0001,
-                    'default': 1.75 * _in,
+                    'default': 0.8 * _in,
                     'step': 1E-3,
                     'decimal': 3,
                     'man_call': man_call_noz_thrt,
@@ -1009,9 +996,7 @@ def main():
                 make_param('Exit Diameter', {
                     'type': float, 'units': 'mm',
                     'tag': 'noz_exit',
-                    # 'key': None,
                     'min': 0.0, # Just keeps positive, Exit/Throat limits
-                    # 'default': 5.0,
                     'step': 1E-3,
                     'decimal': 5,
                     'man_call': man_call_noz_D_exit,
@@ -1020,7 +1005,7 @@ def main():
                     'type': float,
                     'tag': 'noz_ER', 'direct': True,
                     'min': 1.001,
-                    'default': 4.99,
+                    'default': 5.0,
                     'step': 1E-1,
                     'decimal': 3,
                     'man_call': man_call_noz_ER,
@@ -1036,7 +1021,7 @@ def main():
                     'type': float,
                     'tag': 'sim_T',
                     'min': 0.1, 'max': 30.0,
-                    'default': 10.0,
+                    'default': 6.0,
                     'step': 1E0,
                     'decimal': 2,
                     'man_call': make_update_due,

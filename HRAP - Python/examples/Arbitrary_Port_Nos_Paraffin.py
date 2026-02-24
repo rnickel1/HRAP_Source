@@ -53,7 +53,7 @@ print('Baking grain geometry')
 grain_diameter=0.023
 
 distances,perimeters,contours,grn_A0 = bake_arbitrary_d2a(
-    'C:/Users/timon/OneDrive/Desktop/Grain_shapes/Grain2.png',
+    hrap_root/'..'/'examples'/'Grain.png',
     grain_diameter=grain_diameter, 
     n_step=150, 
     n_visu=50

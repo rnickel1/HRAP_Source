@@ -9,7 +9,7 @@ exclude = ["hrap/gui/frontend/node_modules"] # TODO: want to include dist but re
 
 [project]
 name = "hrap"
-version = "0.1.7"
+version = "0.1.8"
 
 # dynamic = ["version"]
 # TODO: option that depends on jax[gpu] for linux
@@ -23,6 +23,7 @@ dependencies = [
 	"scikit-image",
 	"coolprop",
 	"interpax",
+	"opencv-python",
 ]
 
 requires-python = ">= 3.10"
