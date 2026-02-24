@@ -31,7 +31,7 @@ hrap
 ```
 
 ## Advanced Usage
-If you are interested in advanced usage such as design optimization, uncertainty quantification, adding custom engine models, etc. then the Python API is for you.
+If you are interested in implementing ad hoc solutions to your specific use case, the Python API is for you.
 See the "HRAP - Python/hrap/examples" directories for several basic API examples.
 
 HRAP Python utilizes JAX for Just-In-Time (JIT) compilation, enabling fast execution speeds while maximizing compatibility.
