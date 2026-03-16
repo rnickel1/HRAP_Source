@@ -1,0 +1,12 @@
+% Define the propellant structure
+propellantData.name = 'Custom_Paraffin_AL';
+propellantData.density = 920;
+propellantData.regA = 0.145;
+propellantData.regN = 0.62;
+propellantData.lenM = 0;
+propellantData.ofRatio = 6.5;
+propellantData.cStarEff = 95;
+
+% Save as a .mat file
+save('MyCustomFuel.mat', 'propellantData');
+disp('Propellant .mat file created successfully.');
